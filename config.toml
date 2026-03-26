@@ -1,0 +1,84 @@
+[server]
+host = "0.0.0.0"
+port = 3000
+log_level = "info"
+env_prefix = "IMG"         # Environment variable prefix, e.g., IMG_AUTH_TOKEN, IMG_DATABASE_URL
+# URL path pattern, all accesses are prefixed with /v/
+# "ymd"  → /v/2025/03/19/{hash}.{ext}
+# "ym"   → /v/2025/03/{hash}.{ext}
+# "y"    → /v/2025/{hash}.{ext}
+# "flat" → /v/{hash}.{ext}
+# preset and download paths are automatically derived:
+#   /v/thumb/2025/03/19/{hash}.{ext}
+#   /v/preview/2025/03/19/{hash}.{ext}
+# Changing 'v' to 'd' in the path will return the original image. Whether authentication is required depends on whether 'image.allow_show_origin' is true.
+url_pattern = "ymd"
+cors_allow_origins = ["*"]       # Allowed CORS origins, * means all
+cors_max_age = 3600              # Cache time for preflight requests (seconds)
+enable_negotiated_cache = true   # Whether to enable negotiated caching, implementing 304 Not Modified with both etag and last_modified
+cache_max_age = 3600             # Maximum validity for negotiated cache (seconds). Setting to 0 is equivalent to no-cache.
+
+[database]
+driver = "sqlite"          # "sqlite" | "postgres"
+max_connections = 5
+min_connections = 1
+
+[storage]
+type = "local"             # "local"
+base_dir = "./uploads"
+cache_dir = "./cache"
+
+[image]
+enable = true              # Whether to enable image processing. If disabled, only metadata fields specified in keep_metadata_fields will be kept and the original image stored; access will return the original image directly. If enabled, EXIF metadata won't be processed during upload; processing will happen during access according to preset dimensions.
+default_format = "webp"    # "webp" | "avif" | "original"
+quality = 75               # Transcoding quality, 1-100
+max_workers = 2
+allow_show_origin = true   # Whether to allow access to the original image (containing all EXIF info)
+cache_ttl = 25200          # Default cache time (seconds) for all preset sizes and dynamically generated images. If cache_ttl is set individually in a preset, it takes precedence. Setting to 0 means permanent cache.
+# "camera" | "settings" | "time" | "copyright" | "location" | "others"
+keep_metadata_fields = ["copyright", "settings", "time"]
+
+[image.dynamic]
+# Whether to allow dynamic parameters. If not allowed, max_* configurations are ignored.
+# If not allowed, dynamic access will return 403 Forbidden unless it matches a preset.
+allow = false
+allow_enlargement = false  # Whether to allow enlarging images (only works when allow = true)
+max_width = 3840
+max_height = 2160
+
+# ------------------------------------------
+# Presets
+# ------------------------------------------
+# Scaling Rules:
+#   - width or height only  → Proportional scaling, 'fit' is ignored
+#   - both width + height   → Scale according to 'fit' strategy (defaults to "contain")
+#   - neither               → Transcode/compress only, dimensions unchanged
+#
+# fit values:
+#   "cover"   - Crop & Fill: Scale to fully cover target dimensions, center-crop excess
+#   "contain" - Fit & Contain: Scale to fit within target dimensions, maintain ratio (default)
+#   "fill"    - Stretch & Fill: Force stretch to target dimensions, may distort
+#   "inside"  - Same as contain, but won't enlarge images smaller than target
+#   "outside" - Same as cover, but won't shrink images larger than target
+
+# Special preset "default" is the default for all unmatched requests. If not set, global [image] defaults are used.
+[image.presets.default]
+# Transcode/compress only, no resizing
+# quality/format omitted → inherit from [image] global defaults
+
+[image.presets.thumb]
+width = 200
+height = 200
+fit = "cover"
+quality = 60               # Thumbnails can be compressed more aggressively
+eager = true               # Generate immediately upon upload. If true, cache_ttl is ignored and it's cached permanently.
+
+[image.presets.preview]
+width = 1200
+quality = 80               # Slightly higher quality for preview
+# only width provided, auto proportional scaling
+# eager omitted → false, generated on first access
+
+[image.presets.legacy]
+format = "jpeg"            # Override global format for compatibility with old devices not supporting webp
+quality = 70

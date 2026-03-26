@@ -1,0 +1,35 @@
+---
+title: 欢迎使用 RS-IBED
+description: RS-IBED 的部署、配置与开发文档。
+template: splash
+hero:
+  tagline: 一个基于 Rust 的图床服务，支持上传、预设尺寸、动态缩放与 OpenAPI。
+  image:
+    file: ../../../assets/logo.svg
+  actions:
+    - text: 开始使用
+      link: /zh/guides/getting-started/
+      icon: right-arrow
+    - text: 配置文件
+      link: /zh/guides/config/
+      icon: setting
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## 后续步骤
+
+<CardGrid>
+	<Card title="本地部署" icon="rocket">
+		从 [开始使用](/zh/guides/getting-started/) 开始，在本地启动 RS-IBED。
+	</Card>
+	<Card title="配置服务" icon="setting">
+		阅读 [配置文件](/zh/guides/config/) 了解存储、缓存、缩放与元数据相关配置。
+	</Card>
+	<Card title="参与开发" icon="pencil">
+		查看 [参与开发](/zh/guides/develop/) 了解后端、前端、OpenAPI 与文档站工作流。
+	</Card>
+	<Card title="查看 API" icon="open-book">
+		通过侧边栏中的 OpenAPI 生成页面查看当前 API 参考文档。
+	</Card>
+</CardGrid>

@@ -1,0 +1,77 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+  build-rust:
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: rs-ibed
+            cli_name: upload
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: rs-ibed.exe
+            cli_name: upload.exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: rs-ibed
+            cli_name: upload
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: rs-ibed
+            cli_name: upload
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build Binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build CLI Tool
+        run: cargo build --release --target ${{ matrix.target }} --bin upload
+
+      - name: Package Artifacts
+        shell: bash
+        run: |
+          VERSION=${{ needs.create-release.outputs.version }}
+          TARGET=${{ matrix.target }}
+          
+          # 重命名主程序
+          cp target/$TARGET/release/${{ matrix.artifact_name }} rs-ibed-v$VERSION-$TARGET${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          
+          # 重命名 CLI 工具
+          cp target/$TARGET/release/${{ matrix.cli_name }} upload-v$VERSION-$TARGET${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+
+      - name: Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            rs-ibed-v${{ needs.create-release.outputs.version }}-${{ matrix.target }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+            upload-v${{ needs.create-release.outputs.version }}-${{ matrix.target }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}

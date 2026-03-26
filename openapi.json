@@ -1,0 +1,805 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "rs-ibed",
+    "description": "",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/admin/images": {
+      "get": {
+        "tags": [
+          "handlers::admin"
+        ],
+        "summary": "GET /api/admin/images",
+        "operationId": "list_images",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number, starting from 1",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "description": "Items per page",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Fuzzy search by display_name",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "description": "Start date (YYYY-MM-DD)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "description": "End date (YYYY-MM-DD)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated image list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/images/{id}": {
+      "get": {
+        "tags": [
+          "handlers::admin"
+        ],
+        "summary": "GET /api/admin/images/:id",
+        "operationId": "get_image",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Image ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Image detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/images/{id}/delete": {
+      "post": {
+        "tags": [
+          "handlers::admin"
+        ],
+        "summary": "POST /api/admin/images/:id/delete",
+        "operationId": "delete_image",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Image ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Soft deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/images/{id}/rename": {
+      "post": {
+        "tags": [
+          "handlers::admin"
+        ],
+        "summary": "POST /api/admin/images/:id/rename",
+        "operationId": "rename_image",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Image ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Renamed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/images/{id}/restore": {
+      "post": {
+        "tags": [
+          "handlers::admin"
+        ],
+        "summary": "POST /api/admin/images/:id/restore",
+        "operationId": "restore_image",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Image ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Restored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/auth/check": {
+      "get": {
+        "tags": [
+          "handlers::auth"
+        ],
+        "summary": "GET /api/auth/check\nReturns 200 if the user is authenticated.",
+        "operationId": "check",
+        "responses": {
+          "200": {
+            "description": "Authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthCheckResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/auth/cli": {
+      "get": {
+        "tags": [
+          "handlers::auth"
+        ],
+        "summary": "GET /api/auth/cli?token=<one-time-token>\nValidates the one-time CLI token and sets JWT cookie.",
+        "operationId": "cli_login",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "description": "One-time CLI token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Login successful, JWT cookie set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSuccessResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or expired token"
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "handlers::auth"
+        ],
+        "summary": "POST /api/auth/login\nBody: { \"token\": \"<AUTH_TOKEN from .env>\" }",
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful, JWT cookie set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSuccessResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid token"
+          }
+        }
+      }
+    },
+    "/api/upload": {
+      "post": {
+        "tags": [
+          "handlers::upload"
+        ],
+        "summary": "POST /api/upload",
+        "operationId": "upload",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Upload successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/d/{path}": {
+      "get": {
+        "tags": [
+          "handlers::view"
+        ],
+        "summary": "GET /d/{*path}",
+        "operationId": "download",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "Image path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Original image download"
+          },
+          "304": {
+            "description": "Not modified"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/v/{path}": {
+      "get": {
+        "tags": [
+          "handlers::view"
+        ],
+        "summary": "GET /v/{*path}",
+        "operationId": "view",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "Image path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Processed image"
+          },
+          "304": {
+            "description": "Not modified"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AuthCheckResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "user"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "user": {
+            "type": "string"
+          }
+        }
+      },
+      "AuthSuccessResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CliLoginQuery": {
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        }
+      },
+      "ImageDetailResponse": {
+        "type": "object",
+        "required": [
+          "image",
+          "view_url"
+        ],
+        "properties": {
+          "image": {
+            "$ref": "#/components/schemas/ImageModel"
+          },
+          "view_url": {
+            "type": "string"
+          }
+        }
+      },
+      "ImageListQuery": {
+        "type": "object",
+        "properties": {
+          "date_from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Start date (YYYY-MM-DD)"
+          },
+          "date_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "End date (YYYY-MM-DD)"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Fuzzy search by display_name"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Page number, starting from 1"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Items per page"
+          }
+        }
+      },
+      "ImageListResponse": {
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "per_page"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImageModel"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ImageModel": {
+        "type": "object",
+        "required": [
+          "id",
+          "hash",
+          "display_name",
+          "file_name",
+          "extension",
+          "mime_type",
+          "size",
+          "width",
+          "height",
+          "is_deleted",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "extension": {
+            "type": "string"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "is_deleted": {
+            "type": "boolean"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        }
+      },
+      "OkResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RenameRequest": {
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          }
+        }
+      },
+      "UploadRequest": {
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "Image file to upload"
+          },
+          "keep_metadata_fields": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Comma-separated list of metadata fields to keep (e.g. \"camera,time\").\nOverrides the server-side `keep_metadata_fields` config for this upload."
+          }
+        }
+      },
+      "UploadResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "hash",
+          "url",
+          "file_name",
+          "mime_type",
+          "size",
+          "width",
+          "height"
+        ],
+        "properties": {
+          "file_name": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "url": {
+            "type": "string"
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "AUTH_TOKEN"
+      },
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "ibed_token"
+      }
+    }
+  }
+}

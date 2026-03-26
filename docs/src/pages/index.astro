@@ -1,0 +1,25 @@
+---
+// src/pages/index.astro
+---
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0;url=/en/" />
+    <title>Redirecting...</title>
+    <script is:inline>
+      const preferredLanguage = navigator.languages
+        ? navigator.languages[0]
+        : (navigator.language || navigator.userLanguage);
+      
+      if (preferredLanguage.startsWith('zh')) {
+        window.location.pathname = '/zh/';
+      } else {
+        window.location.pathname = '/en/';
+      }
+    </script>
+  </head>
+  <body>
+    <p>Redirecting to <a href="/en/">/en/</a>...</p>
+  </body>
+</html>

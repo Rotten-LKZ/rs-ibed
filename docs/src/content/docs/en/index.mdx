@@ -1,0 +1,35 @@
+---
+title: Welcome to RS-IBED
+description: Documentation for deploying, configuring, and developing RS-IBED.
+template: splash
+hero:
+  tagline: Rust-powered image hosting with upload, presets, dynamic resizing, and OpenAPI support.
+  image:
+    file: ../../../assets/logo.svg
+  actions:
+    - text: Getting Started
+      link: /en/guides/getting-started/
+      icon: right-arrow
+    - text: Configuration
+      link: /en/guides/config/
+      icon: setting
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Next steps
+
+<CardGrid>
+	<Card title="Deploy locally" icon="rocket">
+		Start with the [Getting Started](/en/guides/getting-started/) guide to run RS-IBED locally.
+	</Card>
+	<Card title="Configure the service" icon="setting">
+		Use the [Configuration File](/en/guides/config/) guide to tune storage, caching, resizing, and metadata handling.
+	</Card>
+	<Card title="Join development" icon="pencil">
+		Read the [Development Guide](/en/guides/develop/) for backend, frontend, OpenAPI, and docs workflows.
+	</Card>
+	<Card title="Browse the API" icon="open-book">
+		Check the generated API reference from the current OpenAPI schema in the sidebar.
+	</Card>
+</CardGrid>
