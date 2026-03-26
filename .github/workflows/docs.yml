@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'docs/**'
+      - 'openapi.json'
 
 jobs:
   deploy:
@@ -27,9 +28,15 @@ jobs:
         run: pnpm install
         working-directory: docs
 
-      - name: Build
-        run: pnpm run build
+      - name: Vercel Build
+        run: |
+          pnpm install --global vercel
+          vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+          vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
         working-directory: docs
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v20
@@ -37,5 +44,5 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
+          vercel-args: '--prebuilt --prod'
           working-directory: docs
