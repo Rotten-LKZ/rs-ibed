@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 use crate::error::AppResult;
-use crate::models::image::{ImageModel, NewImage};
+use crate::models::image::{ImageCountResponse, ImageModel, NewImage};
 
 #[async_trait]
 pub trait ImageRepo: Send + Sync {
@@ -22,5 +22,8 @@ pub trait ImageRepo: Send + Sync {
         name: Option<&str>,
         date_from: Option<&str>,
         date_to: Option<&str>,
+        deleted: Option<bool>,
     ) -> AppResult<(Vec<ImageModel>, i64)>;
+
+    async fn count_images(&self) -> AppResult<ImageCountResponse>;
 }

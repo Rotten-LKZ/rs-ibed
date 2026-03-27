@@ -2,6 +2,7 @@
 name = "rs-ibed"
 version = "0.1.0"
 edition = "2024"
+default-run = "rs-ibed"
 
 [dependencies]
 axum = { version = "0.8", features = ["multipart"] }

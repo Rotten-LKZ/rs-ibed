@@ -9,7 +9,8 @@ export default {
 	'login.error': 'Login failed, please try again',
 	'login.tokenLoading': 'Verifying token...',
 	'login.tipTitle': 'Tip',
-	'login.tipBody': 'When you open the CLI login link, this page will automatically exchange the one-time token for a cookie-based session.',
+	'login.tipBody':
+		'When you open the CLI login link, this page will automatically exchange the one-time token for a cookie-based session.',
 
 	'nav.dashboard': 'Dashboard',
 	'nav.images': 'Images',
@@ -96,7 +97,11 @@ export default {
 	'upload.another': 'Upload more',
 
 	'upload.metadata.label': 'Keep EXIF metadata',
-	'upload.metadata.hint': 'Select which fields to keep. If none selected, all metadata is stripped.',
+	'upload.metadata.hint':
+		'When override is enabled, select which fields to keep for this upload. If override is enabled but nothing is selected, all metadata is stripped.',
+	'upload.metadata.override': 'Override server config',
+	'upload.metadata.overrideHint':
+		'When disabled, keep_metadata_fields is not sent and the server config is used.',
 	'upload.metadata.camera': 'Camera',
 	'upload.metadata.settings': 'Settings',
 	'upload.metadata.time': 'Time',
@@ -110,5 +115,5 @@ export default {
 	'trash.info': 'Soft-deleted images can be restored at any time.',
 
 	'theme.toggle': 'Toggle theme',
-	'lang.toggle': 'Toggle language',
+	'lang.toggle': 'Toggle language'
 } as Record<string, string>;

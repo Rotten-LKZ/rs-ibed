@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   create-release:
     runs-on: ubuntu-latest
@@ -64,10 +68,10 @@ jobs:
           VERSION=${{ needs.create-release.outputs.version }}
           TARGET=${{ matrix.target }}
           
-          # 重命名主程序
+          # Rename main application
           cp target/$TARGET/release/${{ matrix.artifact_name }} rs-ibed-v$VERSION-$TARGET${{ matrix.os == 'windows-latest' && '.exe' || '' }}
           
-          # 重命名 CLI 工具
+          # Rename CLI tools
           cp target/$TARGET/release/${{ matrix.cli_name }} upload-v$VERSION-$TARGET${{ matrix.os == 'windows-latest' && '.exe' || '' }}
 
       - name: Upload Assets
@@ -76,3 +80,42 @@ jobs:
           files: |
             rs-ibed-v${{ needs.create-release.outputs.version }}-${{ matrix.target }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
             upload-v${{ needs.create-release.outputs.version }}-${{ matrix.target }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+
+  build-docker:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/rs-ibed
+          tags: |
+            type=raw,value=latest
+            type=raw,value=v${{ needs.create-release.outputs.version }}
+            type=raw,value=${{ needs.create-release.outputs.version }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

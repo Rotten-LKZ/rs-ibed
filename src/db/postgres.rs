@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use super::repo::ImageRepo;
-use crate::error::AppResult;
-use crate::models::image::{ImageModel, NewImage};
+use crate::error::{AppError, AppResult};
+use crate::models::image::{ImageCountResponse, ImageModel, NewImage};
 
 pub struct PgImageRepo {
     pool: PgPool,
@@ -63,29 +63,47 @@ impl ImageRepo for PgImageRepo {
     }
 
     async fn soft_delete(&self, id: i64) -> AppResult<()> {
-        sqlx::query("UPDATE images SET is_deleted = TRUE, updated_at = NOW() WHERE id = $1")
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+        let result = sqlx::query(
+            "UPDATE images SET is_deleted = TRUE, updated_at = NOW() WHERE id = $1 AND is_deleted = FALSE",
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound);
+        }
 
         Ok(())
     }
 
     async fn restore(&self, id: i64) -> AppResult<()> {
-        sqlx::query("UPDATE images SET is_deleted = FALSE, updated_at = NOW() WHERE id = $1")
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+        let result = sqlx::query(
+            "UPDATE images SET is_deleted = FALSE, updated_at = NOW() WHERE id = $1 AND is_deleted = TRUE",
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound);
+        }
 
         Ok(())
     }
 
     async fn rename(&self, id: i64, display_name: &str) -> AppResult<()> {
-        sqlx::query("UPDATE images SET display_name = $1, updated_at = NOW() WHERE id = $2")
+        let result = sqlx::query(
+            "UPDATE images SET display_name = $1, updated_at = NOW() WHERE id = $2 AND is_deleted = FALSE",
+        )
             .bind(display_name)
             .bind(id)
             .execute(&self.pool)
             .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound);
+        }
 
         Ok(())
     }
@@ -97,10 +115,14 @@ impl ImageRepo for PgImageRepo {
         name: Option<&str>,
         date_from: Option<&str>,
         date_to: Option<&str>,
+        deleted: Option<bool>,
     ) -> AppResult<(Vec<ImageModel>, i64)> {
         let offset = (page - 1) * per_page;
 
-        let mut conditions = vec!["is_deleted = FALSE".to_string()];
+        let mut conditions = vec![match deleted {
+            Some(true) => "is_deleted = TRUE".to_string(),
+            Some(false) | None => "is_deleted = FALSE".to_string(),
+        }];
         let name_pattern = name.map(|n| format!("%{n}%"));
         let mut param_idx: u32 = 1;
 
@@ -176,5 +198,168 @@ impl ImageRepo for PgImageRepo {
         let items = list_q.fetch_all(&self.pool).await?;
 
         Ok((items, total))
+    }
+
+    async fn count_images(&self) -> AppResult<ImageCountResponse> {
+        let (active, in_trash) = sqlx::query_as::<_, (i64, i64)>(
+            "SELECT
+                COUNT(*) FILTER (WHERE is_deleted = FALSE)::bigint AS active,
+                COUNT(*) FILTER (WHERE is_deleted = TRUE)::bigint AS in_trash
+             FROM images",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(ImageCountResponse { active, in_trash })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sqlx::postgres::PgPoolOptions;
+
+    use super::*;
+    use crate::error::AppError;
+
+    async fn setup_repo() -> Option<PgImageRepo> {
+        let database_url = match std::env::var("IMG_DATABASE_URL") {
+            Ok(url) if url.starts_with("postgres://") || url.starts_with("postgresql://") => url,
+            _ => return None,
+        };
+
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&database_url)
+            .await
+            .expect("connect postgres test db");
+
+        sqlx::migrate!("./migrations/pgsql")
+            .run(&pool)
+            .await
+            .expect("run postgres migrations");
+
+        sqlx::query("TRUNCATE TABLE images RESTART IDENTITY")
+            .execute(&pool)
+            .await
+            .expect("truncate images table");
+
+        Some(PgImageRepo::new(pool))
+    }
+
+    fn new_image(hash: &str, display_name: &str) -> NewImage {
+        NewImage {
+            hash: hash.to_string(),
+            display_name: display_name.to_string(),
+            file_name: format!("{hash}.png"),
+            extension: "png".to_string(),
+            mime_type: "image/png".to_string(),
+            size: 123,
+            width: 10,
+            height: 20,
+            user_id: Some("tester".to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn rename_returns_not_found_for_deleted_and_missing_images() {
+        let Some(repo) = setup_repo().await else {
+            return;
+        };
+
+        let image = repo
+            .insert_image(&new_image("pg-rename", "before"))
+            .await
+            .expect("insert image");
+
+        repo.rename(image.id, "after").await.expect("rename active image");
+        assert_eq!(
+            repo.find_by_id(image.id)
+                .await
+                .expect("find renamed image")
+                .expect("renamed image exists")
+                .display_name,
+            "after"
+        );
+
+        repo.soft_delete(image.id).await.expect("soft delete image");
+
+        let deleted_err = repo
+            .rename(image.id, "should fail")
+            .await
+            .expect_err("renaming deleted image should fail");
+        assert!(matches!(deleted_err, AppError::NotFound));
+
+        let missing_err = repo
+            .rename(image.id + 1, "missing")
+            .await
+            .expect_err("renaming missing image should fail");
+        assert!(matches!(missing_err, AppError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn soft_delete_and_restore_enforce_deletion_state() {
+        let Some(repo) = setup_repo().await else {
+            return;
+        };
+
+        let image = repo
+            .insert_image(&new_image("pg-restore", "restorable"))
+            .await
+            .expect("insert image");
+
+        let restore_err = repo
+            .restore(image.id)
+            .await
+            .expect_err("restoring active image should fail");
+        assert!(matches!(restore_err, AppError::NotFound));
+
+        repo.soft_delete(image.id).await.expect("soft delete active image");
+
+        let second_delete_err = repo
+            .soft_delete(image.id)
+            .await
+            .expect_err("deleting trashed image should fail");
+        assert!(matches!(second_delete_err, AppError::NotFound));
+
+        let (trash_items, trash_total) = repo
+            .list_images(1, 10, None, None, None, Some(true))
+            .await
+            .expect("list trash");
+        assert_eq!(trash_total, 1);
+        assert_eq!(trash_items.len(), 1);
+        assert_eq!(trash_items[0].id, image.id);
+        assert!(trash_items[0].is_deleted);
+
+        let counts = repo.count_images().await.expect("count images");
+        assert_eq!(counts.active, 0);
+        assert_eq!(counts.in_trash, 1);
+
+        repo.restore(image.id).await.expect("restore trashed image");
+
+        let second_restore_err = repo
+            .restore(image.id)
+            .await
+            .expect_err("restoring active image again should fail");
+        assert!(matches!(second_restore_err, AppError::NotFound));
+
+        let active = repo
+            .find_by_id(image.id)
+            .await
+            .expect("find restored image")
+            .expect("restored image exists");
+        assert!(!active.is_deleted);
+
+        let (active_items, active_total) = repo
+            .list_images(1, 10, None, None, None, Some(false))
+            .await
+            .expect("list active images");
+        assert_eq!(active_total, 1);
+        assert_eq!(active_items.len(), 1);
+        assert_eq!(active_items[0].id, image.id);
+        assert!(!active_items[0].is_deleted);
+
+        let counts = repo.count_images().await.expect("count images after restore");
+        assert_eq!(counts.active, 1);
+        assert_eq!(counts.in_trash, 0);
     }
 }

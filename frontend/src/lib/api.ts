@@ -1,6 +1,7 @@
 import {
 	check,
 	cliLogin,
+	countImages,
 	deleteImage,
 	getImage,
 	listImages,
@@ -10,6 +11,7 @@ import {
 	upload,
 	type AuthCheckResponse,
 	type AuthSuccessResponse,
+	type ImageCountResponse,
 	type ImageDetailResponse,
 	type ImageListResponse,
 	type UploadRequest,
@@ -25,6 +27,7 @@ export type ImageListParams = {
 	name?: string;
 	dateFrom?: string;
 	dateTo?: string;
+	deleted?: boolean;
 };
 
 function configureClient(fetchImpl?: FetchLike) {
@@ -49,7 +52,10 @@ function unwrap<T>(result: { data?: T; error?: unknown; response: Response }): T
 	throw new Error(message);
 }
 
-export async function loginWithToken(token: string, fetchImpl?: FetchLike): Promise<AuthSuccessResponse> {
+export async function loginWithToken(
+	token: string,
+	fetchImpl?: FetchLike
+): Promise<AuthSuccessResponse> {
 	const result = await cliLogin({
 		client: configureClient(fetchImpl),
 		query: { token }
@@ -84,9 +90,15 @@ export async function fetchImages(
 			per_page: params.perPage,
 			name: params.name?.trim() || undefined,
 			date_from: params.dateFrom || undefined,
-			date_to: params.dateTo || undefined
+			date_to: params.dateTo || undefined,
+			deleted: params.deleted
 		}
 	});
+	return unwrap(result);
+}
+
+export async function fetchImageCounts(fetchImpl?: FetchLike): Promise<ImageCountResponse> {
+	const result = await countImages({ client: configureClient(fetchImpl) });
 	return unwrap(result);
 }
 
@@ -121,12 +133,12 @@ export async function restoreManagedImage(id: number, fetchImpl?: FetchLike): Pr
 
 export async function uploadImage(
 	file: File,
-	keepMetadataFields?: string[],
+	keepMetadataFields: string[] | null = null,
 	fetchImpl?: FetchLike
 ): Promise<UploadResponse> {
 	const body: UploadRequest = {
 		file,
-		keep_metadata_fields: keepMetadataFields?.length ? keepMetadataFields.join(',') : undefined
+		keep_metadata_fields: keepMetadataFields === null ? null : keepMetadataFields.join(',')
 	};
 	const result = await upload({
 		client: configureClient(fetchImpl),
@@ -140,7 +152,10 @@ export async function logoutUser(): Promise<void> {
 	// Caller should navigate to /login after this.
 }
 
-export async function fetchImageDetail(id: number, fetchImpl?: FetchLike): Promise<ImageDetailResponse> {
+export async function fetchImageDetail(
+	id: number,
+	fetchImpl?: FetchLike
+): Promise<ImageDetailResponse> {
 	const result = await getImage({
 		client: configureClient(fetchImpl),
 		path: { id }

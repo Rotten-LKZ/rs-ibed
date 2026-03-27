@@ -25,8 +25,8 @@ min_connections = 1
 
 [storage]
 type = "local"             # "local"
-base_dir = "./uploads"
-cache_dir = "./cache"
+base_dir = "./data/uploads"
+cache_dir = "./data/cache"
 
 [image]
 enable = true              # Whether to enable image processing. If disabled, only metadata fields specified in keep_metadata_fields will be kept and the original image stored; access will return the original image directly. If enabled, EXIF metadata won't be processed during upload; processing will happen during access according to preset dimensions.

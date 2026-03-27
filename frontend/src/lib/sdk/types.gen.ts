@@ -17,9 +17,31 @@ export type CliLoginQuery = {
     token: string;
 };
 
+export type ImageCountResponse = {
+    active: number;
+    in_trash: number;
+};
+
 export type ImageDetailResponse = {
     image: ImageModel;
     view_url: string;
+};
+
+export type ImageListItem = {
+    created_at: string;
+    display_name: string;
+    extension: string;
+    file_name: string;
+    hash: string;
+    height: number;
+    id: number;
+    is_deleted: boolean;
+    mime_type: string;
+    size: number;
+    updated_at: string;
+    user_id?: string | null;
+    view_url: string;
+    width: number;
 };
 
 export type ImageListQuery = {
@@ -31,6 +53,10 @@ export type ImageListQuery = {
      * End date (YYYY-MM-DD)
      */
     date_to?: string | null;
+    /**
+     * Filter by deletion status; defaults to non-deleted images when omitted
+     */
+    deleted?: boolean | null;
     /**
      * Fuzzy search by display_name
      */
@@ -46,7 +72,7 @@ export type ImageListQuery = {
 };
 
 export type ImageListResponse = {
-    items: Array<ImageModel>;
+    items: Array<ImageListItem>;
     page: number;
     per_page: number;
     total: number;
@@ -127,6 +153,10 @@ export type ListImagesData = {
          * End date (YYYY-MM-DD)
          */
         date_to?: string | null;
+        /**
+         * Filter by deletion status; defaults to non-deleted images when omitted
+         */
+        deleted?: boolean | null;
     };
     url: '/api/admin/images';
 };
@@ -146,6 +176,29 @@ export type ListImagesResponses = {
 };
 
 export type ListImagesResponse = ListImagesResponses[keyof ListImagesResponses];
+
+export type CountImagesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/admin/images/count';
+};
+
+export type CountImagesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+};
+
+export type CountImagesResponses = {
+    /**
+     * Image counts grouped by deletion status
+     */
+    200: ImageCountResponse;
+};
+
+export type CountImagesResponse = CountImagesResponses[keyof CountImagesResponses];
 
 export type GetImageData = {
     body?: never;

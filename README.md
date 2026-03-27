@@ -9,8 +9,19 @@ A high-performance Rust-powered image hosting service featuring dynamic resizing
 
 1. Go to [Releases](https://github.com/Rotten-LKZ/rs-ibed/releases) and download the binary compatible with your system.
 2. Rename `.env.example` to `.env` and update the values to match your environment.
-3. Download `config.toml` to configure the project. (Check out [the documentation](https://docs.ib.rotcool.me/en/guides/config/) for further information of the config file)
+3. Download `config.toml` to configure the project. (Check out [the documentation](https://docsib.rotcool.me/en/guides/config/) for further information of the config file)
 4. Run the executable to start the service.
+
+## Deployment guides
+
+Use the docs site for production deployment walkthroughs instead of duplicating those steps here:
+
+- [Systemd deployment](https://docsib.rotcool.me/en/guides/systemd/)
+- [Docker deployment with SQLite](https://docsib.rotcool.me/en/guides/docker-sqlite/)
+- [Docker deployment with PostgreSQL](https://docsib.rotcool.me/en/guides/docker-postgres/)
+- [中文：Systemd 部署](https://docsib.rotcool.me/zh/guides/systemd/)
+- [中文：Docker 部署（SQLite）](https://docsib.rotcool.me/zh/guides/docker-sqlite/)
+- [中文：Docker 部署（PostgreSQL）](https://docsib.rotcool.me/zh/guides/docker-postgres/)
 
 ## Project Structure
 
@@ -54,7 +65,6 @@ cargo run
 
 ```bash
 cargo run -- export-openapi
-cargo run -- export-openapi frontend/openapi.json
 ```
 
 ### Frontend SDK generation

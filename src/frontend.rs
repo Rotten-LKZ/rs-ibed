@@ -50,7 +50,7 @@ mod proxy {
     use axum::http::{StatusCode, header};
     use axum::response::{IntoResponse, Response};
 
-    const DEV_SERVER: &str = "http://127.0.0.1:6492";
+    const DEV_SERVER: &str = "http://localhost:6492";
 
     static CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| {
         reqwest::Client::builder()

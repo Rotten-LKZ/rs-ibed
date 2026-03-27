@@ -96,7 +96,10 @@ export default {
 	'upload.another': '继续上传',
 
 	'upload.metadata.label': '保留 EXIF 元数据',
-	'upload.metadata.hint': '选择要保留的字段，若不选择则全部清除。',
+	'upload.metadata.hint':
+		'开启覆盖后，可选择本次上传要保留的字段；若开启覆盖但不选择，则全部清除。',
+	'upload.metadata.override': '覆盖服务端配置',
+	'upload.metadata.overrideHint': '关闭时不传 keep_metadata_fields，使用服务端配置。',
 	'upload.metadata.camera': '相机',
 	'upload.metadata.settings': '拍摄参数',
 	'upload.metadata.time': '时间',
@@ -110,5 +113,5 @@ export default {
 	'trash.info': '已删除的图片可以随时恢复。',
 
 	'theme.toggle': '切换主题',
-	'lang.toggle': '切换语言',
+	'lang.toggle': '切换语言'
 } as Record<string, string>;

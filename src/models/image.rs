@@ -46,6 +46,8 @@ pub struct ImageListQuery {
     pub date_from: Option<String>,
     /// End date (YYYY-MM-DD)
     pub date_to: Option<String>,
+    /// Filter by deletion status; defaults to non-deleted images when omitted
+    pub deleted: Option<bool>,
 }
 
 fn default_page() -> i64 {
@@ -56,8 +58,26 @@ fn default_per_page() -> i64 {
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ImageListItem {
+    pub id: i64,
+    pub hash: String,
+    pub display_name: String,
+    pub file_name: String,
+    pub extension: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub width: i32,
+    pub height: i32,
+    pub user_id: Option<String>,
+    pub is_deleted: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub view_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ImageListResponse {
-    pub items: Vec<ImageModel>,
+    pub items: Vec<ImageListItem>,
     pub total: i64,
     pub page: i64,
     pub per_page: i64,
@@ -67,6 +87,12 @@ pub struct ImageListResponse {
 pub struct ImageDetailResponse {
     pub image: ImageModel,
     pub view_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ImageCountResponse {
+    pub active: i64,
+    pub in_trash: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

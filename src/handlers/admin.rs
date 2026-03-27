@@ -5,7 +5,8 @@ use chrono::Datelike;
 use crate::auth::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::models::image::{
-    ImageDetailResponse, ImageListQuery, ImageListResponse, OkResponse, RenameRequest,
+    ImageCountResponse, ImageDetailResponse, ImageListItem, ImageListQuery, ImageListResponse,
+    OkResponse, RenameRequest,
 };
 use crate::state::AppState;
 
@@ -33,8 +34,40 @@ pub async fn list_images(
             query.name.as_deref(),
             query.date_from.as_deref(),
             query.date_to.as_deref(),
+            query.deleted,
         )
         .await?;
+
+    let items = items
+        .into_iter()
+        .map(|item| {
+            let created = item.created_at;
+            let view_url = state.config.server.url_pattern.view_path(
+                created.year() as u16,
+                created.month() as u8,
+                created.day() as u8,
+                &item.hash,
+                &item.extension,
+            );
+
+            ImageListItem {
+                id: item.id,
+                hash: item.hash,
+                display_name: item.display_name,
+                file_name: item.file_name,
+                extension: item.extension,
+                mime_type: item.mime_type,
+                size: item.size,
+                width: item.width,
+                height: item.height,
+                user_id: item.user_id,
+                is_deleted: item.is_deleted,
+                created_at: item.created_at,
+                updated_at: item.updated_at,
+                view_url,
+            }
+        })
+        .collect();
 
     Ok(Json(ImageListResponse {
         items,
@@ -42,6 +75,24 @@ pub async fn list_images(
         page: query.page,
         per_page: query.per_page,
     }))
+}
+
+/// GET /api/admin/images/count
+#[utoipa::path(
+    get,
+    path = "/api/admin/images/count",
+    responses(
+        (status = 200, description = "Image counts grouped by deletion status", body = ImageCountResponse),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("cookieAuth" = []), ("bearerAuth" = []))
+)]
+pub async fn count_images(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<ImageCountResponse>> {
+    let counts = state.repo.count_images().await?;
+    Ok(Json(counts))
 }
 
 /// GET /api/admin/images/:id
@@ -61,11 +112,7 @@ pub async fn get_image(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<Json<ImageDetailResponse>> {
-    let record = state
-        .repo
-        .find_by_id(id)
-        .await?
-        .ok_or(AppError::NotFound)?;
+    let record = state.repo.find_by_id(id).await?.ok_or(AppError::NotFound)?;
 
     let created = record.created_at;
     let view_url = state.config.server.url_pattern.view_path(
@@ -101,13 +148,6 @@ pub async fn rename_image(
     Path(id): Path<i64>,
     Json(body): Json<RenameRequest>,
 ) -> AppResult<Json<OkResponse>> {
-    // Check exists
-    state
-        .repo
-        .find_by_id(id)
-        .await?
-        .ok_or(AppError::NotFound)?;
-
     state.repo.rename(id, &body.display_name).await?;
 
     Ok(Json(OkResponse { ok: true }))
@@ -130,12 +170,6 @@ pub async fn delete_image(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<Json<OkResponse>> {
-    state
-        .repo
-        .find_by_id(id)
-        .await?
-        .ok_or(AppError::NotFound)?;
-
     state.repo.soft_delete(id).await?;
 
     Ok(Json(OkResponse { ok: true }))
@@ -158,12 +192,6 @@ pub async fn restore_image(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<Json<OkResponse>> {
-    state
-        .repo
-        .find_by_id(id)
-        .await?
-        .ok_or(AppError::NotFound)?;
-
     state.repo.restore(id).await?;
 
     Ok(Json(OkResponse { ok: true }))

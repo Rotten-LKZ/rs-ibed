@@ -1,0 +1,14 @@
+.git
+.github
+.vscode
+.idea
+node_modules
+frontend/node_modules
+docs/node_modules
+docs/dist
+frontend/build
+frontend/.svelte-kit
+target
+.gitignore
+.env
+.env.*

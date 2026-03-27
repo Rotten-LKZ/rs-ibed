@@ -72,6 +72,18 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "deleted",
+            "in": "query",
+            "description": "Filter by deletion status; defaults to non-deleted images when omitted",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -81,6 +93,38 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ImageListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/images/count": {
+      "get": {
+        "tags": [
+          "handlers::admin"
+        ],
+        "summary": "GET /api/admin/images/count",
+        "operationId": "count_images",
+        "responses": {
+          "200": {
+            "description": "Image counts grouped by deletion status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageCountResponse"
                 }
               }
             }
@@ -545,6 +589,23 @@
           }
         }
       },
+      "ImageCountResponse": {
+        "type": "object",
+        "required": [
+          "active",
+          "in_trash"
+        ],
+        "properties": {
+          "active": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "in_trash": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ImageDetailResponse": {
         "type": "object",
         "required": [
@@ -557,6 +618,77 @@
           },
           "view_url": {
             "type": "string"
+          }
+        }
+      },
+      "ImageListItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "hash",
+          "display_name",
+          "file_name",
+          "extension",
+          "mime_type",
+          "size",
+          "width",
+          "height",
+          "is_deleted",
+          "created_at",
+          "updated_at",
+          "view_url"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "extension": {
+            "type": "string"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "is_deleted": {
+            "type": "boolean"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "view_url": {
+            "type": "string"
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -576,6 +708,13 @@
               "null"
             ],
             "description": "End date (YYYY-MM-DD)"
+          },
+          "deleted": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Filter by deletion status; defaults to non-deleted images when omitted"
           },
           "name": {
             "type": [
@@ -608,7 +747,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ImageModel"
+              "$ref": "#/components/schemas/ImageListItem"
             }
           },
           "page": {

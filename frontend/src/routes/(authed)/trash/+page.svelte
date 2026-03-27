@@ -13,9 +13,8 @@
 		loading = true;
 		error = '';
 		try {
-			// API doesn't have a deleted filter, so fetch all and filter client-side
-			const result = await fetchImages({ perPage: 100 });
-			items = result.items.filter((i) => i.is_deleted);
+			const result = await fetchImages({ perPage: 100, deleted: true });
+			items = result.items;
 		} catch {
 			error = t('home.loadError');
 		} finally {
@@ -66,37 +65,59 @@
 				onclick={handleRestoreAll}
 				disabled={busyId !== null}
 				class="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-40"
-			>{t('trash.restoreAll')}</button>
+				>{t('trash.restoreAll')}</button
+			>
 		{/if}
 	</div>
 
 	<p class="text-sm text-gray-500 dark:text-gray-400">{t('trash.info')}</p>
 
 	{#if error}
-		<p class="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</p>
+		<p
+			class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+		>
+			{error}
+		</p>
 	{/if}
 
 	{#if loading}
-		<div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 text-sm text-gray-500">{t('home.loading')}</div>
+		<div
+			class="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800"
+		>
+			{t('home.loading')}
+		</div>
 	{:else if items.length === 0}
-		<div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 text-sm text-gray-500">{t('trash.empty')}</div>
+		<div
+			class="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800"
+		>
+			{t('trash.empty')}
+		</div>
 	{:else}
-		<div class="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
 			{#each items as item (item.id)}
-				<article class="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-					<div class="aspect-video bg-gray-100 dark:bg-gray-900 flex items-center justify-center text-sm text-gray-400">
+				<article
+					class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+				>
+					<div
+						class="flex aspect-video items-center justify-center bg-gray-100 text-sm text-gray-400 dark:bg-gray-900"
+					>
 						{t('home.deletedBadge')}
 					</div>
 					<div class="space-y-2 p-3">
 						<div class="min-w-0">
-							<h3 class="truncate text-sm font-medium text-gray-900 dark:text-white">{item.display_name}</h3>
-							<p class="text-xs text-gray-500 dark:text-gray-400">#{item.id} · {item.width}×{item.height} · {formatSize(item.size)}</p>
+							<h3 class="truncate text-sm font-medium text-gray-900 dark:text-white">
+								{item.display_name}
+							</h3>
+							<p class="text-xs text-gray-500 dark:text-gray-400">
+								#{item.id} · {item.width}×{item.height} · {formatSize(item.size)}
+							</p>
 						</div>
 						<button
 							onclick={() => handleRestore(item)}
 							disabled={busyId === item.id}
 							class="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-40"
-						>{t('home.restore')}</button>
+							>{t('home.restore')}</button
+						>
 					</div>
 				</article>
 			{/each}

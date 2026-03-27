@@ -13,8 +13,8 @@ use crate::handlers;
 use crate::handlers::auth::{AuthCheckResponse, AuthSuccessResponse, CliLoginQuery, LoginRequest};
 use crate::handlers::upload::UploadRequest;
 use crate::models::image::{
-    ImageDetailResponse, ImageListQuery, ImageListResponse, ImageModel, OkResponse, RenameRequest,
-    UploadResponse,
+    ImageCountResponse, ImageDetailResponse, ImageListQuery, ImageListResponse, ImageModel,
+    OkResponse, RenameRequest, UploadResponse,
 };
 use crate::state::AppState;
 
@@ -28,6 +28,7 @@ use crate::state::AppState;
         handlers::view::view,
         handlers::view::download,
         handlers::admin::list_images,
+        handlers::admin::count_images,
         handlers::admin::get_image,
         handlers::admin::rename_image,
         handlers::admin::delete_image,
@@ -35,6 +36,7 @@ use crate::state::AppState;
     ),
     components(schemas(
         ImageModel,
+        ImageCountResponse,
         ImageDetailResponse,
         ImageListQuery,
         ImageListResponse,
@@ -67,6 +69,7 @@ pub fn build(state: AppState) -> Router {
         .route("/api/upload", post(handlers::upload::upload))
         // Admin
         .route("/api/admin/images", get(handlers::admin::list_images))
+        .route("/api/admin/images/count", get(handlers::admin::count_images))
         .route("/api/admin/images/{id}", get(handlers::admin::get_image))
         .route(
             "/api/admin/images/{id}/rename",

@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
-	import { fetchImageDetail, deleteManagedImage, renameManagedImage, restoreManagedImage } from '$lib/api';
+	import {
+		fetchImageDetail,
+		deleteManagedImage,
+		renameManagedImage,
+		restoreManagedImage
+	} from '$lib/api';
 	import { t } from '$lib/i18n/index.svelte';
 	import type { ImageModel } from '$lib/sdk';
 
@@ -79,22 +84,37 @@
 </script>
 
 <div class="space-y-4">
-	<a href={resolve('/images')} class="inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline">
+	<a
+		href={resolve('/images')}
+		class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline dark:text-blue-400"
+	>
 		&larr; {t('detail.back')}
 	</a>
 
 	{#if loading}
-		<div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 text-sm text-gray-500">{t('home.loading')}</div>
+		<div
+			class="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800"
+		>
+			{t('home.loading')}
+		</div>
 	{:else if error || !image}
-		<div class="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-6 text-sm text-red-700 dark:text-red-300">{error || t('detail.notFound')}</div>
+		<div
+			class="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+		>
+			{error || t('detail.notFound')}
+		</div>
 	{:else}
 		<div class="grid gap-6 lg:grid-cols-2">
 			<!-- Preview -->
-			<div class="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-900">
+			<div
+				class="overflow-hidden rounded-xl border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-900"
+			>
 				{#if !image.is_deleted}
-					<img src={`/v/${image.hash}.${image.extension}`} alt={image.display_name} class="w-full object-contain max-h-[70vh]" />
+					<img src={viewUrl} alt={image.display_name} class="max-h-[70vh] w-full object-contain" />
 				{:else}
-					<div class="flex h-64 items-center justify-center text-gray-400">{t('home.deletedBadge')}</div>
+					<div class="flex h-64 items-center justify-center text-gray-400">
+						{t('home.deletedBadge')}
+					</div>
 				{/if}
 			</div>
 
@@ -103,20 +123,30 @@
 				<div class="flex items-center gap-3">
 					<h1 class="text-xl font-bold text-gray-900 dark:text-white">{image.display_name}</h1>
 					{#if image.is_deleted}
-						<span class="rounded-full bg-red-100 dark:bg-red-950/50 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300">{t('detail.deleted')}</span>
+						<span
+							class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
+							>{t('detail.deleted')}</span
+						>
 					{:else}
-						<span class="rounded-full bg-green-100 dark:bg-green-950/50 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-300">{t('detail.active')}</span>
+						<span
+							class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950/50 dark:text-green-300"
+							>{t('detail.active')}</span
+						>
 					{/if}
 				</div>
 
-				<dl class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+				<dl
+					class="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800"
+				>
 					<div class="flex justify-between px-4 py-3">
 						<dt class="text-sm text-gray-500 dark:text-gray-400">{t('detail.fileName')}</dt>
 						<dd class="text-sm font-medium text-gray-900 dark:text-white">{image.file_name}</dd>
 					</div>
 					<div class="flex justify-between px-4 py-3">
 						<dt class="text-sm text-gray-500 dark:text-gray-400">{t('detail.dimensions')}</dt>
-						<dd class="text-sm font-medium text-gray-900 dark:text-white">{image.width} × {image.height}</dd>
+						<dd class="text-sm font-medium text-gray-900 dark:text-white">
+							{image.width} × {image.height}
+						</dd>
 					</div>
 					<div class="flex justify-between px-4 py-3">
 						<dt class="text-sm text-gray-500 dark:text-gray-400">{t('home.mime')}</dt>
@@ -124,41 +154,68 @@
 					</div>
 					<div class="flex justify-between px-4 py-3">
 						<dt class="text-sm text-gray-500 dark:text-gray-400">{t('home.size')}</dt>
-						<dd class="text-sm font-medium text-gray-900 dark:text-white">{formatSize(image.size)}</dd>
+						<dd class="text-sm font-medium text-gray-900 dark:text-white">
+							{formatSize(image.size)}
+						</dd>
 					</div>
 					<div class="flex justify-between px-4 py-3">
 						<dt class="text-sm text-gray-500 dark:text-gray-400">{t('detail.hash')}</dt>
-						<dd class="text-sm font-mono text-gray-900 dark:text-white truncate max-w-[200px]">{image.hash}</dd>
+						<dd class="max-w-[200px] truncate font-mono text-sm text-gray-900 dark:text-white">
+							{image.hash}
+						</dd>
 					</div>
 					<div class="flex justify-between px-4 py-3">
 						<dt class="text-sm text-gray-500 dark:text-gray-400">{t('detail.created')}</dt>
-						<dd class="text-sm font-medium text-gray-900 dark:text-white">{new Date(image.created_at).toLocaleString()}</dd>
+						<dd class="text-sm font-medium text-gray-900 dark:text-white">
+							{new Date(image.created_at).toLocaleString()}
+						</dd>
 					</div>
 					<div class="flex justify-between px-4 py-3">
 						<dt class="text-sm text-gray-500 dark:text-gray-400">{t('detail.updated')}</dt>
-						<dd class="text-sm font-medium text-gray-900 dark:text-white">{new Date(image.updated_at).toLocaleString()}</dd>
+						<dd class="text-sm font-medium text-gray-900 dark:text-white">
+							{new Date(image.updated_at).toLocaleString()}
+						</dd>
 					</div>
 				</dl>
 
 				{#if !image.is_deleted}
-					<div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 space-y-2">
+					<div
+						class="space-y-2 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
+					>
 						<div>
 							<p class="text-xs text-gray-500 dark:text-gray-400">{t('detail.viewUrl')}</p>
-							<p class="text-sm font-mono text-blue-600 dark:text-blue-400 break-all">{viewUrl}</p>
+							<p class="font-mono text-sm break-all text-blue-600 dark:text-blue-400">{viewUrl}</p>
 						</div>
 						<div>
 							<p class="text-xs text-gray-500 dark:text-gray-400">{t('detail.downloadUrl')}</p>
-							<p class="text-sm font-mono text-blue-600 dark:text-blue-400 break-all">{viewUrl.replace('/v/', '/d/')}</p>
+							<p class="font-mono text-sm break-all text-blue-600 dark:text-blue-400">
+								{viewUrl.replace('/v/', '/d/')}
+							</p>
 						</div>
 					</div>
 				{/if}
 
 				<div class="flex flex-wrap gap-2">
-					<button onclick={handleRename} disabled={busy} class="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40">{t('home.rename')}</button>
+					<button
+						onclick={handleRename}
+						disabled={busy}
+						class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+						>{t('home.rename')}</button
+					>
 					{#if image.is_deleted}
-						<button onclick={handleRestore} disabled={busy} class="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-40">{t('home.restore')}</button>
+						<button
+							onclick={handleRestore}
+							disabled={busy}
+							class="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-40"
+							>{t('home.restore')}</button
+						>
 					{:else}
-						<button onclick={handleDelete} disabled={busy} class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40">{t('home.delete')}</button>
+						<button
+							onclick={handleDelete}
+							disabled={busy}
+							class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40"
+							>{t('home.delete')}</button
+						>
 					{/if}
 				</div>
 			</div>

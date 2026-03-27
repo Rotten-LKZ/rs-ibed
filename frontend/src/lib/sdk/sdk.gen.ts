@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CheckData, CheckErrors, CheckResponses, CliLoginData, CliLoginErrors, CliLoginResponses, DeleteImageData, DeleteImageErrors, DeleteImageResponses, DownloadData, DownloadErrors, DownloadResponses, GetImageData, GetImageErrors, GetImageResponses, ListImagesData, ListImagesErrors, ListImagesResponses, LoginData, LoginErrors, LoginResponses, RenameImageData, RenameImageErrors, RenameImageResponses, RestoreImageData, RestoreImageErrors, RestoreImageResponses, UploadData, UploadErrors, UploadResponses, ViewData, ViewErrors, ViewResponses } from './types.gen';
+import type { CheckData, CheckErrors, CheckResponses, CliLoginData, CliLoginErrors, CliLoginResponses, CountImagesData, CountImagesErrors, CountImagesResponses, DeleteImageData, DeleteImageErrors, DeleteImageResponses, DownloadData, DownloadErrors, DownloadResponses, GetImageData, GetImageErrors, GetImageResponses, ListImagesData, ListImagesErrors, ListImagesResponses, LoginData, LoginErrors, LoginResponses, RenameImageData, RenameImageErrors, RenameImageResponses, RestoreImageData, RestoreImageErrors, RestoreImageResponses, UploadData, UploadErrors, UploadResponses, ViewData, ViewErrors, ViewResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -28,6 +28,19 @@ export const listImages = <ThrowOnError extends boolean = false>(options?: Optio
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
     url: '/api/admin/images',
+    ...options
+});
+
+/**
+ * GET /api/admin/images/count
+ */
+export const countImages = <ThrowOnError extends boolean = false>(options?: Options<CountImagesData, ThrowOnError>) => (options?.client ?? client).get<CountImagesResponses, CountImagesErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'ibed_token',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/api/admin/images/count',
     ...options
 });
 

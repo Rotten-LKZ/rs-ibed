@@ -4,7 +4,14 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { UploadResponse } from '$lib/sdk';
 
-	const METADATA_FIELDS = ['camera', 'settings', 'time', 'copyright', 'location', 'others'] as const;
+	const METADATA_FIELDS = [
+		'camera',
+		'settings',
+		'time',
+		'copyright',
+		'location',
+		'others'
+	] as const;
 	type MetadataField = (typeof METADATA_FIELDS)[number];
 
 	let files = $state<FileList | null>(null);
@@ -12,6 +19,7 @@
 	let results = $state<Array<{ name: string; result?: UploadResponse; error?: string }>>([]);
 	let dragover = $state(false);
 	let fileInput: HTMLInputElement;
+	let overrideKeepMetadataFields = $state(false);
 	let keepFields = new SvelteSet<MetadataField>();
 
 	function toggleField(field: MetadataField) {
@@ -24,7 +32,7 @@
 		uploading = true;
 		results = [];
 		const list = Array.from(files);
-		const fields = keepFields.size > 0 ? [...keepFields] : undefined;
+		const fields = overrideKeepMetadataFields ? [...keepFields] : null;
 		for (const file of list) {
 			try {
 				const result = await uploadImage(file, fields);
@@ -56,7 +64,7 @@
 	}
 </script>
 
-<div class="space-y-6 max-w-2xl">
+<div class="max-w-2xl space-y-6">
 	<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{t('upload.title')}</h1>
 
 	<!-- Drop zone -->
@@ -64,8 +72,8 @@
 	<div
 		class="rounded-xl border-2 border-dashed p-8 text-center transition-colors
 			{dragover
-				? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
-				: 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'}"
+			? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
+			: 'border-gray-300 hover:border-blue-400 dark:border-gray-600 dark:hover:border-blue-500'}"
 		ondrop={handleDrop}
 		ondragover={handleDragover}
 		ondragleave={() => (dragover = false)}
@@ -79,13 +87,15 @@
 				type="file"
 				multiple
 				accept="image/*"
-				onchange={(e) => { files = (e.currentTarget as HTMLInputElement).files; }}
+				onchange={(e) => {
+					files = (e.currentTarget as HTMLInputElement).files;
+				}}
 				class="hidden"
 				id="file-input"
 			/>
 			<label
 				for="file-input"
-				class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+				class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
 			>
 				{t('upload.select')}
 			</label>
@@ -93,34 +103,59 @@
 	</div>
 
 	<!-- Metadata options -->
-	<div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 space-y-3">
+	<div
+		class="space-y-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
+	>
 		<div>
 			<p class="text-sm font-medium text-gray-900 dark:text-white">{t('upload.metadata.label')}</p>
-			<p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('upload.metadata.hint')}</p>
+			<p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{t('upload.metadata.hint')}</p>
 		</div>
-		<div class="flex flex-wrap gap-2">
-			{#each METADATA_FIELDS as field (field)}
-				<button
-					type="button"
-					onclick={() => toggleField(field)}
-					class="rounded-full border px-3 py-1 text-xs font-medium transition-colors
-						{keepFields.has(field)
-							? 'border-blue-500 bg-blue-500 text-white'
-							: 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-blue-400 dark:hover:border-blue-500'}"
+		<label class="flex items-start gap-3">
+			<input
+				type="checkbox"
+				bind:checked={overrideKeepMetadataFields}
+				class="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+			/>
+			<span>
+				<span class="text-sm font-medium text-gray-900 dark:text-white"
+					>{t('upload.metadata.override')}</span
 				>
-					{t(`upload.metadata.${field}`)}
-				</button>
-			{/each}
-		</div>
+				<span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400"
+					>{t('upload.metadata.overrideHint')}</span
+				>
+			</span>
+		</label>
+		{#if overrideKeepMetadataFields}
+			<div class="flex flex-wrap gap-2">
+				{#each METADATA_FIELDS as field (field)}
+					<button
+						type="button"
+						onclick={() => toggleField(field)}
+						class="rounded-full border px-3 py-1 text-xs font-medium transition-colors
+							{keepFields.has(field)
+							? 'border-blue-500 bg-blue-500 text-white'
+							: 'border-gray-300 text-gray-600 hover:border-blue-400 dark:border-gray-600 dark:text-gray-400 dark:hover:border-blue-500'}"
+					>
+						{t(`upload.metadata.${field}`)}
+					</button>
+				{/each}
+			</div>
+		{/if}
 	</div>
 
 	<!-- Selected files -->
 	{#if files && files.length > 0}
-		<div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 space-y-2">
-			<p class="text-sm font-medium text-gray-900 dark:text-white">{t('upload.selected')}: {files.length}</p>
+		<div
+			class="space-y-2 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
+		>
+			<p class="text-sm font-medium text-gray-900 dark:text-white">
+				{t('upload.selected')}: {files.length}
+			</p>
 			<ul class="space-y-1">
 				{#each Array.from(files) as file (file.name)}
-					<li class="text-sm text-gray-600 dark:text-gray-400">· {file.name} ({(file.size / 1024).toFixed(1)} KB)</li>
+					<li class="text-sm text-gray-600 dark:text-gray-400">
+						· {file.name} ({(file.size / 1024).toFixed(1)} KB)
+					</li>
 				{/each}
 			</ul>
 			<button
@@ -139,16 +174,29 @@
 			<h2 class="text-base font-semibold text-gray-900 dark:text-white">{t('upload.results')}</h2>
 			{#each results as r (r.name)}
 				{#if r.error}
-					<div class="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4">
+					<div
+						class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/40"
+					>
 						<p class="text-sm font-medium text-red-700 dark:text-red-300">{r.name}</p>
 						<p class="text-sm text-red-600 dark:text-red-400">{r.error}</p>
 					</div>
 				{:else if r.result}
-					<div class="rounded-xl border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/40 p-4 space-y-2">
-						<p class="text-sm font-medium text-green-800 dark:text-green-200">{r.name} — {t('upload.success')}</p>
+					<div
+						class="space-y-2 rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950/40"
+					>
+						<p class="text-sm font-medium text-green-800 dark:text-green-200">
+							{r.name} — {t('upload.success')}
+						</p>
 						<div class="flex items-center gap-2">
-							<code class="flex-1 min-w-0 truncate rounded bg-green-100 dark:bg-green-900/40 px-2 py-1 text-xs text-green-900 dark:text-green-200">{r.result.url}</code>
-							<button onclick={() => copyUrl(r.result!.url)} class="shrink-0 rounded px-2 py-1 text-xs font-medium text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/40">{t('images.copyLink')}</button>
+							<code
+								class="min-w-0 flex-1 truncate rounded bg-green-100 px-2 py-1 text-xs text-green-900 dark:bg-green-900/40 dark:text-green-200"
+								>{r.result.url}</code
+							>
+							<button
+								onclick={() => copyUrl(r.result!.url)}
+								class="shrink-0 rounded px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100 dark:text-green-300 dark:hover:bg-green-900/40"
+								>{t('images.copyLink')}</button
+							>
 						</div>
 					</div>
 				{/if}

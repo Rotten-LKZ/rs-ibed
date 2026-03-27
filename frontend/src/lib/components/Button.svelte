@@ -7,7 +7,12 @@
 		children: Snippet;
 	}
 
-	let { variant = 'primary', class: className = '', children, ...rest }: Props & { class?: string } = $props();
+	let {
+		variant = 'primary',
+		class: className = '',
+		children,
+		...rest
+	}: Props & { class?: string } = $props();
 </script>
 
 <button
