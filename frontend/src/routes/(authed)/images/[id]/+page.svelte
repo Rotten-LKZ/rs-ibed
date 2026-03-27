@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import {
 		fetchImageDetail,
 		deleteManagedImage,
@@ -16,8 +16,22 @@
 	let error = $state('');
 	let busy = $state(false);
 
+	const resolvedViewUrl = $derived.by(() => {
+		if (!viewUrl) return '';
+		if (/^https?:\/\//.test(viewUrl)) return viewUrl;
+		const appBase = resolve('/').replace(/\/$/, '');
+		return `${appBase}${viewUrl}`;
+	});
+	const absoluteViewUrl = $derived.by(() => {
+		if (!resolvedViewUrl) return '';
+		return page.url ? new URL(resolvedViewUrl, page.url.origin).href : resolvedViewUrl;
+	});
+	const absoluteDownloadUrl = $derived(
+		absoluteViewUrl ? absoluteViewUrl.replace('/v/', '/d/') : ''
+	);
+
 	$effect(() => {
-		const id = Number($page.params.id);
+		const id = Number(page.params.id);
 		if (!isNaN(id)) loadDetail(id);
 	});
 
@@ -107,10 +121,14 @@
 		<div class="grid gap-6 lg:grid-cols-2">
 			<!-- Preview -->
 			<div
-				class="overflow-hidden rounded-xl border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-900"
+				class="flex min-h-[70vh] items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
 			>
 				{#if !image.is_deleted}
-					<img src={viewUrl} alt={image.display_name} class="max-h-[70vh] w-full object-contain" />
+					<img
+						src={resolvedViewUrl}
+						alt={image.display_name}
+						class="max-h-[calc(70vh-2rem)] max-w-full object-contain"
+					/>
 				{:else}
 					<div class="flex h-64 items-center justify-center text-gray-400">
 						{t('home.deletedBadge')}
@@ -184,12 +202,14 @@
 					>
 						<div>
 							<p class="text-xs text-gray-500 dark:text-gray-400">{t('detail.viewUrl')}</p>
-							<p class="font-mono text-sm break-all text-blue-600 dark:text-blue-400">{viewUrl}</p>
+							<p class="font-mono text-sm break-all text-blue-600 dark:text-blue-400">
+								{absoluteViewUrl}
+							</p>
 						</div>
 						<div>
 							<p class="text-xs text-gray-500 dark:text-gray-400">{t('detail.downloadUrl')}</p>
 							<p class="font-mono text-sm break-all text-blue-600 dark:text-blue-400">
-								{viewUrl.replace('/v/', '/d/')}
+								{absoluteDownloadUrl}
 							</p>
 						</div>
 					</div>

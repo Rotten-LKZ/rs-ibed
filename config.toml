@@ -41,7 +41,7 @@ keep_metadata_fields = ["copyright", "settings", "time"]
 [image.dynamic]
 # Whether to allow dynamic parameters. If not allowed, max_* configurations are ignored.
 # If not allowed, dynamic access will return 403 Forbidden unless it matches a preset.
-allow = false
+allow = true
 allow_enlargement = false  # Whether to allow enlarging images (only works when allow = true)
 max_width = 3840
 max_height = 2160

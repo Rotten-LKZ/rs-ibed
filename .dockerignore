@@ -12,3 +12,7 @@ target
 .gitignore
 .env
 .env.*
+
+# Allow prebuilt Docker artifacts downloaded by CI.
+!dist/
+!dist/rs-ibed
