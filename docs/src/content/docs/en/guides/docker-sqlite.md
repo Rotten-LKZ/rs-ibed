@@ -1,19 +1,15 @@
 ---
 title: Docker Deployment (SQLite)
-description: Build the shared production image and run RS-IBED in a single container backed by SQLite.
+description: Pull the published production image and run RS-IBED in a single container backed by SQLite.
 ---
 
-This guide uses the shared production `Dockerfile` from the repository root and keeps everything in one container.
+This guide uses the published production image and keeps everything in one container.
 
-## Build the image
-
-From the repository root:
+## Pull the image
 
 ```bash
-docker build -t rs-ibed:latest .
+docker pull ghcr.io/rotten-lkz/rs-ibed:latest
 ```
-
-The image builds the frontend first, compiles the Rust release binary with embedded `frontend/build` assets, then copies only the final `rs-ibed` binary into the runtime image.
 
 ## Prepare local directories
 
@@ -52,7 +48,7 @@ docker run -d \
   -e IMG_AUTH_TOKEN="$IMG_AUTH_TOKEN" \
   -e IMG_JWT_SECRET="$IMG_JWT_SECRET" \
   -e IMG_DATABASE_URL="$IMG_DATABASE_URL" \
-  rs-ibed:latest \
+  ghcr.io/rotten-lkz/rs-ibed:latest \
   --config /app/config.toml
 ```
 

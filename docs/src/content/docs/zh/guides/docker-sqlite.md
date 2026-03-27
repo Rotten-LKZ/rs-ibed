@@ -1,19 +1,15 @@
 ---
 title: Docker 部署（SQLite）
-description: 使用仓库根目录中的共享生产镜像，将 RS-IBED 以单容器方式部署到 SQLite。
+description: 拉取已发布的生产镜像，将 RS-IBED 以单容器方式部署到 SQLite。
 ---
 
-本指南使用仓库根目录的共享生产 `Dockerfile`，并将服务与 SQLite 放在同一个容器中运行。
+本指南使用已发布的生产镜像，并将服务与 SQLite 放在同一个容器中运行。
 
-## 构建镜像
-
-在仓库根目录执行：
+## 拉取镜像
 
 ```bash
-docker build -t rs-ibed:latest .
+docker pull ghcr.io/rotten-lkz/rs-ibed:latest
 ```
-
-该镜像会先构建前端，再编译嵌入 `frontend/build` 资源的 Rust release 二进制，最后只把最终的 `rs-ibed` 二进制复制到运行时镜像中。
 
 ## 准备本地目录
 
@@ -52,7 +48,7 @@ docker run -d \
   -e IMG_AUTH_TOKEN="$IMG_AUTH_TOKEN" \
   -e IMG_JWT_SECRET="$IMG_JWT_SECRET" \
   -e IMG_DATABASE_URL="$IMG_DATABASE_URL" \
-  rs-ibed:latest \
+  ghcr.io/rotten-lkz/rs-ibed:latest \
   --config /app/config.toml
 ```
 

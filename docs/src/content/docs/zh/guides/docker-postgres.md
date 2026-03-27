@@ -1,9 +1,9 @@
 ---
 title: Docker 部署（PostgreSQL）
-description: 使用共享生产镜像与 compose 示例，将 RS-IBED 部署到 PostgreSQL。
+description: 使用已发布的生产镜像与 compose 示例，将 RS-IBED 部署到 PostgreSQL。
 ---
 
-本指南与 SQLite 版本共用同一个生产镜像，但通过 Compose 将应用与 PostgreSQL 组合部署。
+本指南与 SQLite 版本共用同一个已发布的生产镜像，但通过 Compose 将应用与 PostgreSQL 组合部署。
 
 ## 为什么推荐 Compose
 
@@ -31,7 +31,7 @@ postgres://ibed:ibed-password@postgres:5432/ibed
 
 ## Compose 文件
 
-先下载 compose 文件。它会使用根目录 `Dockerfile` 构建应用镜像，启动 PostgreSQL，并为数据库和应用数据挂载持久化卷。
+先下载 compose 文件。它会拉取已发布的应用镜像，启动 PostgreSQL，并为数据库和应用数据挂载持久化卷。
 
 ```bash
 curl -L https://docsib.rotcool.me/docker-compose.pgsql.yml -o docker-compose.pgsql.yml
@@ -46,8 +46,16 @@ cp config.toml deploy/config.toml
 
 ## 启动服务栈
 
+可以先拉取最新发布镜像：
+
 ```bash
-docker compose -f docker-compose.pgsql.yml up -d --build
+docker compose -f docker-compose.pgsql.yml pull
+```
+
+然后启动整套服务：
+
+```bash
+docker compose -f docker-compose.pgsql.yml up -d
 ```
 
 ## 就绪与权限注意事项

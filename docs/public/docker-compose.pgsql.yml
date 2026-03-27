@@ -16,9 +16,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
   app:
-    build:
-      context: ..
-      dockerfile: Dockerfile
+    image: ghcr.io/rotten-lkz/rs-ibed:latest
     restart: unless-stopped
     depends_on:
       postgres:

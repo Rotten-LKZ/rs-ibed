@@ -1,9 +1,9 @@
 ---
 title: Docker Deployment (PostgreSQL)
-description: Run RS-IBED with PostgreSQL using the shared production image and a compose example.
+description: Run RS-IBED with PostgreSQL using the published production image and a compose example.
 ---
 
-This guide uses the same shared production image as the SQLite guide, but pairs the app with PostgreSQL through Compose.
+This guide uses the same published production image as the SQLite guide, but pairs the app with PostgreSQL through Compose.
 
 ## Why Compose is recommended
 
@@ -31,7 +31,7 @@ postgres://ibed:ibed-password@postgres:5432/ibed
 
 ## Compose file
 
-Download the compose file first. It builds the app from the root `Dockerfile`, starts PostgreSQL, and mounts persistent volumes for database and application data.
+Download the compose file first. It pulls the published app image, starts PostgreSQL, and mounts persistent volumes for database and application data.
 
 ```bash
 curl -L https://docsib.rotcool.me/docker-compose.pgsql.yml -o docker-compose.pgsql.yml
@@ -46,8 +46,16 @@ cp config.toml deploy/config.toml
 
 ## Start the stack
 
+Optionally pull the latest published image first:
+
 ```bash
-docker compose -f docker-compose.pgsql.yml up -d --build
+docker compose -f docker-compose.pgsql.yml pull
+```
+
+Then start the stack:
+
+```bash
+docker compose -f docker-compose.pgsql.yml up -d
 ```
 
 ## Readiness and permissions caveats
