@@ -1,3 +1,4 @@
+use axum::extract::DefaultBodyLimit;
 use axum::http::HeaderValue;
 use axum::{
     routing::{get, post},
@@ -67,8 +68,11 @@ pub fn build(state: AppState) -> Router {
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/cli", get(handlers::auth::cli_login))
         .route("/api/auth/check", get(handlers::auth::check))
-        // Upload
-        .route("/api/upload", post(handlers::upload::upload))
+        // Upload (no body size limit — images can be large)
+        .route(
+            "/api/upload",
+            post(handlers::upload::upload).layer(DefaultBodyLimit::disable()),
+        )
         // Admin
         .route("/api/admin/images", get(handlers::admin::list_images))
         .route("/api/admin/images/count", get(handlers::admin::count_images))

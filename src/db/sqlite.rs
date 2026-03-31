@@ -42,7 +42,7 @@ impl ImageRepo for SqliteImageRepo {
     async fn find_by_hash(&self, hash: &str) -> AppResult<Option<ImageModel>> {
         let row = sqlx::query_as::<_, ImageModel>(
             "SELECT id, hash, display_name, file_name, extension, mime_type, size, width, height, user_id, is_deleted, created_at, updated_at
-             FROM images WHERE hash = ? AND is_deleted = 0 LIMIT 1",
+             FROM images WHERE hash = ? LIMIT 1",
         )
         .bind(hash)
         .fetch_optional(&self.pool)

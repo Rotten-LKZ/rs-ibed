@@ -107,6 +107,9 @@ pub async fn upload(
 
     // 5. Dedup check
     if let Some(existing) = state.repo.find_by_hash(&hash).await? {
+        if existing.is_deleted {
+            state.repo.restore(existing.id).await?;
+        }
         let created = existing.created_at;
         let url = state.config.server.url_pattern.view_path(
             created.year() as u16,
