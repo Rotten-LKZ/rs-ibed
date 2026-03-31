@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 
 use crate::error::AppResult;
 use crate::models::image::{ImageCountResponse, ImageModel, NewImage};
@@ -26,4 +27,9 @@ pub trait ImageRepo: Send + Sync {
     ) -> AppResult<(Vec<ImageModel>, i64)>;
 
     async fn count_images(&self) -> AppResult<ImageCountResponse>;
+
+    async fn hard_delete(&self, id: i64) -> AppResult<()>;
+    async fn find_expired_deleted(&self, cutoff: DateTime<Utc>) -> AppResult<Vec<ImageModel>>;
+    async fn find_all_deleted(&self) -> AppResult<Vec<ImageModel>>;
+    async fn delete_all_deleted(&self) -> AppResult<()>;
 }

@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 
 use super::repo::ImageRepo;
@@ -187,6 +188,42 @@ impl ImageRepo for SqliteImageRepo {
         .await?;
 
         Ok(ImageCountResponse { active, in_trash })
+    }
+
+    async fn hard_delete(&self, id: i64) -> AppResult<()> {
+        sqlx::query("DELETE FROM images WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn find_expired_deleted(&self, cutoff: DateTime<Utc>) -> AppResult<Vec<ImageModel>> {
+        let rows = sqlx::query_as::<_, ImageModel>(
+            "SELECT id, hash, display_name, file_name, extension, mime_type, size, width, height, user_id, is_deleted, created_at, updated_at
+             FROM images WHERE is_deleted = 1 AND updated_at < ?",
+        )
+        .bind(cutoff)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    async fn find_all_deleted(&self) -> AppResult<Vec<ImageModel>> {
+        let rows = sqlx::query_as::<_, ImageModel>(
+            "SELECT id, hash, display_name, file_name, extension, mime_type, size, width, height, user_id, is_deleted, created_at, updated_at
+             FROM images WHERE is_deleted = 1",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    async fn delete_all_deleted(&self) -> AppResult<()> {
+        sqlx::query("DELETE FROM images WHERE is_deleted = 1")
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 }
 

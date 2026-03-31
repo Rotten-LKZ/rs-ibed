@@ -27,6 +27,7 @@ cors_allow_origins = ["*"]       # 允许的跨域来源，* 代表允许所有
 cors_max_age = 3600              # 预检请求的缓存时间（秒）
 enable_negotiated_cache = true   # 是否启用协商缓存，实现 304 Not Modified 同时启用 etag 和 last_modified
 cache_max_age = 3600             # 协商缓存的最大有效期（秒） 若设置为 0 则相当于 no-cache
+trash_retention_days = 30        # 自动永久删除回收站中超过此天数的图片，0 表示不自动清理
 
 [database]
 driver = "sqlite"          # "sqlite" | "postgres"
@@ -109,6 +110,7 @@ quality = 70
 | `cors_max_age` | u64 | `3600` | CORS 预检请求缓存时间（秒） |
 | `enable_negotiated_cache` | bool | `true` | 是否启用协商缓存（Etag / Last-Modified） |
 | `cache_max_age` | u64 | `3600` | 浏览器强缓存时间（秒）。设置为 0 表示 `no-cache` |
+| `trash_retention_days` | u64 | `0` | 自动永久删除回收站中超过此天数的图片，设置为 0 表示不自动清理 |
 
 ### [database] 数据库配置
 

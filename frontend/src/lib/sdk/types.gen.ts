@@ -200,6 +200,29 @@ export type CountImagesResponses = {
 
 export type CountImagesResponse = CountImagesResponses[keyof CountImagesResponses];
 
+export type EmptyTrashData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/admin/images/trash/empty';
+};
+
+export type EmptyTrashErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+};
+
+export type EmptyTrashResponses = {
+    /**
+     * Trash emptied
+     */
+    200: OkResponse;
+};
+
+export type EmptyTrashResponse = EmptyTrashResponses[keyof EmptyTrashResponses];
+
 export type GetImageData = {
     body?: never;
     path: {
@@ -263,6 +286,42 @@ export type DeleteImageResponses = {
 };
 
 export type DeleteImageResponse = DeleteImageResponses[keyof DeleteImageResponses];
+
+export type PermanentDeleteImageData = {
+    body?: never;
+    path: {
+        /**
+         * Image ID
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/admin/images/{id}/permanent-delete';
+};
+
+export type PermanentDeleteImageErrors = {
+    /**
+     * Image not in trash
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+};
+
+export type PermanentDeleteImageResponses = {
+    /**
+     * Permanently deleted
+     */
+    200: OkResponse;
+};
+
+export type PermanentDeleteImageResponse = PermanentDeleteImageResponses[keyof PermanentDeleteImageResponses];
 
 export type RenameImageData = {
     body: RenameRequest;

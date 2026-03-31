@@ -6,7 +6,7 @@
     "license": {
       "name": ""
     },
-    "version": "0.1.0"
+    "version": "0.0.1"
   },
   "paths": {
     "/api/admin/images": {
@@ -143,6 +143,38 @@
         ]
       }
     },
+    "/api/admin/images/trash/empty": {
+      "post": {
+        "tags": [
+          "handlers::admin"
+        ],
+        "summary": "POST /api/admin/images/trash/empty",
+        "operationId": "empty_trash",
+        "responses": {
+          "200": {
+            "description": "Trash emptied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/admin/images/{id}": {
       "get": {
         "tags": [
@@ -219,6 +251,56 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/images/{id}/permanent-delete": {
+      "post": {
+        "tags": [
+          "handlers::admin"
+        ],
+        "summary": "POST /api/admin/images/{id}/permanent-delete",
+        "operationId": "permanent_delete_image",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Image ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Permanently deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Image not in trash"
           },
           "401": {
             "description": "Unauthorized"

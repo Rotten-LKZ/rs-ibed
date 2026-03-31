@@ -9,6 +9,7 @@ use crate::models::image::{
     OkResponse, RenameRequest,
 };
 use crate::state::AppState;
+use crate::storage;
 
 /// GET /api/admin/images
 #[utoipa::path(
@@ -193,6 +194,77 @@ pub async fn restore_image(
     Path(id): Path<i64>,
 ) -> AppResult<Json<OkResponse>> {
     state.repo.restore(id).await?;
+
+    Ok(Json(OkResponse { ok: true }))
+}
+
+/// POST /api/admin/images/{id}/permanent-delete
+#[utoipa::path(
+    post,
+    path = "/api/admin/images/{id}/permanent-delete",
+    params(("id" = i64, Path, description = "Image ID")),
+    responses(
+        (status = 200, description = "Permanently deleted", body = OkResponse),
+        (status = 400, description = "Image not in trash"),
+        (status = 404, description = "Not found"),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("cookieAuth" = []), ("bearerAuth" = []))
+)]
+pub async fn permanent_delete_image(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> AppResult<Json<OkResponse>> {
+    let record = state.repo.find_by_id(id).await?.ok_or(AppError::NotFound)?;
+
+    if !record.is_deleted {
+        return Err(AppError::BadRequest(
+            "image is not in trash; soft-delete it first".into(),
+        ));
+    }
+
+    let src = storage::original_path(
+        &state.config.storage.base_dir,
+        &record.hash,
+        &record.extension,
+    );
+    let _ = tokio::fs::remove_file(&src).await;
+
+    let _ = storage::remove_all_cache_for_hash(&state.config.storage.cache_dir, &record.hash).await;
+
+    state.repo.hard_delete(id).await?;
+
+    Ok(Json(OkResponse { ok: true }))
+}
+
+/// POST /api/admin/images/trash/empty
+#[utoipa::path(
+    post,
+    path = "/api/admin/images/trash/empty",
+    responses(
+        (status = 200, description = "Trash emptied", body = OkResponse),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("cookieAuth" = []), ("bearerAuth" = []))
+)]
+pub async fn empty_trash(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<OkResponse>> {
+    let images = state.repo.find_all_deleted().await?;
+
+    for img in &images {
+        let src = storage::original_path(
+            &state.config.storage.base_dir,
+            &img.hash,
+            &img.extension,
+        );
+        let _ = tokio::fs::remove_file(&src).await;
+        let _ = storage::remove_all_cache_for_hash(&state.config.storage.cache_dir, &img.hash).await;
+    }
+
+    state.repo.delete_all_deleted().await?;
 
     Ok(Json(OkResponse { ok: true }))
 }

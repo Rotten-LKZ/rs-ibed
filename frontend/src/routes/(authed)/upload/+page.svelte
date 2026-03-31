@@ -14,7 +14,7 @@
 	] as const;
 	type MetadataField = (typeof METADATA_FIELDS)[number];
 
-	let files = $state<FileList | null>(null);
+	let files = $state<File[]>([]);
 	let uploading = $state(false);
 	let results = $state<Array<{ name: string; result?: UploadResponse; error?: string }>>([]);
 	let dragover = $state(false);
@@ -27,11 +27,21 @@
 		else keepFields.add(field);
 	}
 
+	function addFiles(newFiles: FileList | null) {
+		if (newFiles) {
+			files = [...files, ...Array.from(newFiles)];
+		}
+	}
+
+	function removeFile(index: number) {
+		files = files.filter((_, i) => i !== index);
+	}
+
 	async function handleUpload() {
-		if (!files || files.length === 0) return;
+		if (files.length === 0) return;
 		uploading = true;
 		results = [];
-		const list = Array.from(files);
+		const list = [...files];
 		const fields = overrideKeepMetadataFields ? [...keepFields] : null;
 		for (const file of list) {
 			try {
@@ -42,16 +52,14 @@
 			}
 		}
 		uploading = false;
-		files = null;
+		files = [];
 		if (fileInput) fileInput.value = '';
 	}
 
 	function handleDrop(e: DragEvent) {
 		e.preventDefault();
 		dragover = false;
-		if (e.dataTransfer?.files) {
-			files = e.dataTransfer.files;
-		}
+		addFiles(e.dataTransfer?.files ?? null);
 	}
 
 	function handleDragover(e: DragEvent) {
@@ -88,7 +96,8 @@
 				multiple
 				accept="image/*"
 				onchange={(e) => {
-					files = (e.currentTarget as HTMLInputElement).files;
+					addFiles((e.currentTarget as HTMLInputElement).files);
+					(e.currentTarget as HTMLInputElement).value = '';
 				}}
 				class="hidden"
 				id="file-input"
@@ -144,24 +153,45 @@
 	</div>
 
 	<!-- Selected files -->
-	{#if files && files.length > 0}
+	{#if files.length > 0}
 		<div
 			class="space-y-2 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
 		>
-			<p class="text-sm font-medium text-gray-900 dark:text-white">
-				{t('upload.selected')}: {files.length}
-			</p>
+			<div class="flex items-center justify-between">
+				<p class="text-sm font-medium text-gray-900 dark:text-white">
+					{t('upload.selected')}: {files.length}
+				</p>
+				<button
+					type="button"
+					onclick={() => {
+						files = [];
+						if (fileInput) fileInput.value = '';
+					}}
+					class="cursor-pointer text-xs font-medium text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400"
+					>{t('upload.clearAll')}</button
+				>
+			</div>
 			<ul class="space-y-1">
-				{#each Array.from(files) as file (file.name)}
-					<li class="text-sm text-gray-600 dark:text-gray-400">
-						· {file.name} ({(file.size / 1024).toFixed(1)} KB)
+				{#each files as file, i (i)}
+					<li
+						class="flex items-center justify-between gap-2 text-sm text-gray-600 dark:text-gray-400"
+					>
+						<span class="min-w-0 flex-1 truncate"
+							>· {file.name} ({(file.size / 1024).toFixed(1)} KB)</span
+						>
+						<button
+							type="button"
+							onclick={() => removeFile(i)}
+							class="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40"
+							>✕</button
+						>
 					</li>
 				{/each}
 			</ul>
 			<button
 				onclick={handleUpload}
 				disabled={uploading}
-				class="mt-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+				class="mt-2 cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
 			>
 				{uploading ? t('home.uploading') : t('upload.submit')}
 			</button>

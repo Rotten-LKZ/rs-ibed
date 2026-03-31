@@ -45,6 +45,8 @@ pub struct ServerConfig {
     pub cors_max_age: u64,
     pub enable_negotiated_cache: bool,
     pub cache_max_age: u64,
+    #[serde(default)]
+    pub trash_retention_days: u64,
 }
 
 impl Default for ServerConfig {
@@ -59,6 +61,7 @@ impl Default for ServerConfig {
             cors_max_age: 3600,
             enable_negotiated_cache: true,
             cache_max_age: 3600,
+            trash_retention_days: 0,
         }
     }
 }

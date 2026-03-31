@@ -60,6 +60,49 @@ fn hash_prefix(hash: &str) -> (&str, &str) {
     (&hash[..2], &hash[2..4])
 }
 
+/// Remove all cached files for a given hash by walking the cache_dir recursively
+/// and deleting every file whose filename starts with `{hash}.`.
+/// Returns the number of files deleted.
+pub async fn remove_all_cache_for_hash(cache_dir: &str, hash: &str) -> std::io::Result<usize> {
+    let prefix = format!("{hash}.");
+    let cache_root = Path::new(cache_dir);
+    let mut deleted = 0;
+
+    if tokio::fs::metadata(cache_root).await.is_err() {
+        return Ok(0);
+    }
+
+    let mut stack = vec![cache_root.to_path_buf()];
+
+    while let Some(dir) = stack.pop() {
+        let mut entries = match tokio::fs::read_dir(&dir).await {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            let ty = entry.file_type().await?;
+
+            if ty.is_dir() {
+                stack.push(path);
+                continue;
+            }
+
+            if ty.is_file() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.starts_with(&prefix) {
+                        tokio::fs::remove_file(&path).await?;
+                        deleted += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(deleted)
+}
+
 fn fit_suffix(fit: FitMode) -> &'static str {
     match fit {
         FitMode::Cover => "cover",

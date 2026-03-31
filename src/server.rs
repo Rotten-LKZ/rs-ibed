@@ -3,11 +3,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use chrono::{Duration as ChronoDuration, Utc};
 use tokio::sync::Semaphore;
 
 use crate::auth::CliTokenStore;
 use crate::config::{AppConfig, Secrets};
 use crate::db;
+use crate::db::repo::ImageRepo;
 use crate::router;
 use crate::state::AppState;
 use crate::storage;
@@ -62,7 +64,7 @@ pub async fn run(config: AppConfig, secrets: Secrets) {
         workers,
     };
 
-    spawn_cache_sweeper(Arc::clone(&state.config));
+    spawn_cache_sweeper(Arc::clone(&state.config), Arc::clone(&state.repo));
 
     let app = router::build(state);
 
@@ -75,10 +77,12 @@ pub async fn run(config: AppConfig, secrets: Secrets) {
     axum::serve(listener, app).await.expect("server error");
 }
 
-fn spawn_cache_sweeper(config: Arc<AppConfig>) {
+fn spawn_cache_sweeper(config: Arc<AppConfig>, repo: Arc<dyn ImageRepo>) {
     let cache_dir = config.storage.cache_dir.clone();
     let dynamic_ttl = config.image.cache_ttl;
     let ttl_map = preset_ttl_map(&config);
+    let trash_retention_days = config.server.trash_retention_days;
+    let base_dir = config.storage.base_dir.clone();
 
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(CACHE_SWEEP_INTERVAL_SECS));
@@ -97,6 +101,28 @@ fn spawn_cache_sweeper(config: Arc<AppConfig>) {
                 }
                 Err(e) => {
                     tracing::warn!(cache_dir = %cache_dir, "cache sweep failed: {e}");
+                }
+            }
+
+            if trash_retention_days > 0 {
+                let cutoff = Utc::now() - ChronoDuration::days(trash_retention_days as i64);
+                match repo.find_expired_deleted(cutoff).await {
+                    Ok(images) => {
+                        for img in &images {
+                            let src = storage::original_path(&base_dir, &img.hash, &img.extension);
+                            let _ = tokio::fs::remove_file(&src).await;
+                            let _ = storage::remove_all_cache_for_hash(&cache_dir, &img.hash).await;
+                        }
+                        let count = images.len();
+                        if let Err(e) = repo.delete_all_deleted().await {
+                            tracing::warn!("trash sweep DB delete failed: {e}");
+                        } else if count > 0 {
+                            tracing::info!(expired_images = count, "trash sweep finished");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("trash sweep failed: {e}");
+                    }
                 }
             }
         }

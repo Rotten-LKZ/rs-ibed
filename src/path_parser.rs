@@ -36,8 +36,6 @@ pub fn parse_v_path(
     path: &str,
     known_presets: &[&str],
 ) -> Option<ParsedImagePath> {
-    println!("Parsing path: {path} with pattern {pattern:?}");
-
     let date_segs = match pattern {
         UrlPattern::Ymd => 3,
         UrlPattern::Ym => 2,

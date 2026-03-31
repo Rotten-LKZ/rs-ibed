@@ -77,15 +77,15 @@ pnpm dev -- --open
 
 Run all commands inside `frontend/`:
 
-| Command | Description |
-| :-- | :-- |
-| `pnpm install` | Install dependencies |
-| `pnpm dev` | Start the development server |
-| `pnpm build` | Build the production app |
-| `pnpm preview` | Preview the production build locally |
-| `pnpm check` | Run Svelte type checks |
-| `pnpm lint` | Run Prettier and ESLint checks |
-| `pnpm format` | Format frontend code |
+| Command        | Description                            |
+| :------------- | :------------------------------------- |
+| `pnpm install` | Install dependencies                   |
+| `pnpm dev`     | Start the development server           |
+| `pnpm build`   | Build the production app               |
+| `pnpm preview` | Preview the production build locally   |
+| `pnpm check`   | Run Svelte type checks                 |
+| `pnpm lint`    | Run Prettier and ESLint checks         |
+| `pnpm format`  | Format frontend code                   |
 | `pnpm gen:api` | Regenerate the SDK from `openapi.json` |
 
 ## Working with the backend

@@ -69,6 +69,7 @@ cors_allow_origins = ["*"]
 cors_max_age = 3600
 enable_negotiated_cache = true
 cache_max_age = 3600
+trash_retention_days = 30
 
 [database]
 driver = "sqlite"

@@ -95,6 +95,7 @@ export default {
 	'upload.copyUrl': 'Copy URL',
 	'upload.copied': 'Copied!',
 	'upload.another': 'Upload more',
+	'upload.clearAll': 'Clear all',
 
 	'upload.metadata.label': 'Keep EXIF metadata',
 	'upload.metadata.hint':
@@ -113,6 +114,10 @@ export default {
 	'trash.empty': 'Trash is empty.',
 	'trash.restoreAll': 'Restore all',
 	'trash.info': 'Soft-deleted images can be restored at any time.',
+	'trash.emptyTrash': 'Empty trash',
+	'trash.emptyTrashConfirm': 'This will permanently delete all trashed images. This action cannot be undone. Continue?',
+	'trash.permanentDelete': 'Delete permanently',
+	'trash.permanentDeleteConfirm': 'Permanently delete this image? This action cannot be undone.',
 
 	'theme.toggle': 'Toggle theme',
 	'lang.toggle': 'Toggle language'

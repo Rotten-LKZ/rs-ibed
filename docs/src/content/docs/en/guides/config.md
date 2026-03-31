@@ -27,6 +27,7 @@ cors_allow_origins = ["*"]       # Allowed CORS origins, * means all
 cors_max_age = 3600              # Cache time for preflight requests (seconds)
 enable_negotiated_cache = true   # Whether to enable negotiated caching, implementing 304 Not Modified with both etag and last_modified
 cache_max_age = 3600             # Maximum validity for negotiated cache (seconds). Setting to 0 is equivalent to no-cache.
+trash_retention_days = 30        # Automatically permanently delete trashed images after this many days. 0 = disabled.
 
 [database]
 driver = "sqlite"          # "sqlite" | "postgres"
@@ -109,6 +110,7 @@ quality = 70
 | `cors_max_age` | u64 | `3600` | CORS preflight request cache time (seconds) |
 | `enable_negotiated_cache` | bool | `true` | Whether to enable negotiated caching (Etag / Last-Modified) |
 | `cache_max_age` | u64 | `3600` | Browser strong cache time (seconds). Set to 0 for `no-cache` |
+| `trash_retention_days` | u64 | `0` | Automatically permanently delete trashed images after this many days. Set to 0 to disable auto-cleanup. |
 
 ### [database] Database Configuration
 

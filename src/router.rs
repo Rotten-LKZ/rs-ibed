@@ -33,6 +33,8 @@ use crate::state::AppState;
         handlers::admin::rename_image,
         handlers::admin::delete_image,
         handlers::admin::restore_image,
+        handlers::admin::permanent_delete_image,
+        handlers::admin::empty_trash,
     ),
     components(schemas(
         ImageModel,
@@ -82,6 +84,14 @@ pub fn build(state: AppState) -> Router {
         .route(
             "/api/admin/images/{id}/restore",
             post(handlers::admin::restore_image),
+        )
+        .route(
+            "/api/admin/images/trash/empty",
+            post(handlers::admin::empty_trash),
+        )
+        .route(
+            "/api/admin/images/{id}/permanent-delete",
+            post(handlers::admin::permanent_delete_image),
         )
         // OpenAPI JSON
         .route("/api/openapi.json", get(openapi_json))

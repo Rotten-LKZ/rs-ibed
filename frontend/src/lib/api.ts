@@ -3,9 +3,11 @@ import {
 	cliLogin,
 	countImages,
 	deleteImage,
+	emptyTrash,
 	getImage,
 	listImages,
 	login,
+	permanentDeleteImage,
 	renameImage,
 	restoreImage,
 	upload,
@@ -127,6 +129,21 @@ export async function restoreManagedImage(id: number, fetchImpl?: FetchLike): Pr
 	const result = await restoreImage({
 		client: configureClient(fetchImpl),
 		path: { id }
+	});
+	unwrap(result);
+}
+
+export async function permanentDeleteManagedImage(id: number, fetchImpl?: FetchLike): Promise<void> {
+	const result = await permanentDeleteImage({
+		client: configureClient(fetchImpl),
+		path: { id }
+	});
+	unwrap(result);
+}
+
+export async function emptyAllTrash(fetchImpl?: FetchLike): Promise<void> {
+	const result = await emptyTrash({
+		client: configureClient(fetchImpl)
 	});
 	unwrap(result);
 }

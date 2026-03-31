@@ -94,6 +94,7 @@ export default {
 	'upload.copyUrl': '复制链接',
 	'upload.copied': '已复制！',
 	'upload.another': '继续上传',
+	'upload.clearAll': '清空全部',
 
 	'upload.metadata.label': '保留 EXIF 元数据',
 	'upload.metadata.hint':
@@ -111,6 +112,10 @@ export default {
 	'trash.empty': '回收站为空。',
 	'trash.restoreAll': '全部恢复',
 	'trash.info': '已删除的图片可以随时恢复。',
+	'trash.emptyTrash': '清空全部',
+	'trash.emptyTrashConfirm': '将永久删除回收站中的所有图片，此操作不可撤销，是否继续？',
+	'trash.permanentDelete': '永久删除',
+	'trash.permanentDeleteConfirm': '确定要永久删除这张图片吗？此操作不可撤销。',
 
 	'theme.toggle': '切换主题',
 	'lang.toggle': '切换语言'
