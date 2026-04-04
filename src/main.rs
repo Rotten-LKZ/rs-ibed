@@ -14,6 +14,7 @@ mod router;
 mod server;
 mod state;
 mod storage;
+mod storage_backend;
 
 use clap::Parser;
 use cli::{Cli, Command};

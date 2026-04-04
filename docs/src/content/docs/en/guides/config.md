@@ -1,6 +1,6 @@
 ---
 title: Configuration File
-description: How to configure the application using the configuration file.
+description: How to configure the application using the configuration file, including distributed storage endpoints.
 ---
 
 Place the `config.toml` file in the project's root directory, or specify its location using the `./rs-ibed --config <path/to/config_file.toml>` command.
@@ -28,16 +28,50 @@ cors_max_age = 3600              # Cache time for preflight requests (seconds)
 enable_negotiated_cache = true   # Whether to enable negotiated caching, implementing 304 Not Modified with both etag and last_modified
 cache_max_age = 3600             # Maximum validity for negotiated cache (seconds). Setting to 0 is equivalent to no-cache.
 trash_retention_days = 30        # Automatically permanently delete trashed images after this many days. 0 = disabled.
+# strict_health_check = false    # When enabled, returns 503 (storage unavailable) instead of 404 when image metadata exists but
+                                 # file is missing on all storage nodes. Helps diagnose storage node failures vs truly missing files.
 
 [database]
 driver = "sqlite"          # "sqlite" | "postgres"
 max_connections = 5
 min_connections = 1
 
+# ------------------------------------------
+# Storage Endpoints (Distributed Storage)
+# ------------------------------------------
+# RS-IBED uses a consistent hash ring to distribute files across multiple storage
+# endpoints. This allows horizontal scaling and high availability.
+#
+# Key features:
+#   - Consistent hashing: Adding/removing nodes only affects adjacent hash ranges
+#   - Weighted by capacity: Larger capacity endpoints get more virtual nodes
+#   - Priority tiers: Lower priority = higher preference; falls through when full
+#   - Multi-backend: Supports both local filesystem and S3-compatible storage
+#   - Automatic failover: Read probes all nodes in ring order until file found
+
 [storage]
-type = "local"             # "local"
-base_dir = "./uploads"
-cache_dir = "./cache"
+# max_payload_bytes = 52428800   # Optional: enforce maximum upload size (bytes). Returns 413 if exceeded.
+
+# Define one or more storage endpoints. Each endpoint can be Local or S3.
+[[storage.endpoints]]
+name           = "local-primary"
+description    = "Primary local filesystem"
+type           = "Local"           # "Local" or "S3"
+path           = "./data/storage"  # Required for Local type
+capacity_bytes = 10737418240       # 10 GB - used for ring weighting
+priority       = 1                 # Lower = higher priority tier
+
+[[storage.endpoints]]
+name           = "minio-node1"
+description    = "MinIO S3 node 1"
+type           = "S3"
+bucket         = "ibed-images"
+region         = "us-east-1"
+force_path_style = true            # Required for MinIO and self-hosted S3
+direct_mode    = "presigned"       # "proxy" | "presigned" | "public"
+direct_url_ttl = 3600              # Presigned URL TTL in seconds
+capacity_bytes = 21474836480       # 20 GB
+priority       = 1
 
 [image]
 enable = true              # Whether to enable image processing. If disabled, only metadata fields specified in keep_metadata_fields will be kept and the original image stored; access will return the original image directly. If enabled, EXIF metadata won't be processed during upload; processing will happen during access according to preset dimensions.
@@ -111,6 +145,7 @@ quality = 70
 | `enable_negotiated_cache` | bool | `true` | Whether to enable negotiated caching (Etag / Last-Modified) |
 | `cache_max_age` | u64 | `3600` | Browser strong cache time (seconds). Set to 0 for `no-cache` |
 | `trash_retention_days` | u64 | `0` | Automatically permanently delete trashed images after this many days. Set to 0 to disable auto-cleanup. |
+| `strict_health_check` | bool | `false` | When enabled, returns 503 instead of 404 when metadata exists but file is missing on all storage nodes |
 
 ### [database] Database Configuration
 
@@ -124,8 +159,38 @@ quality = 70
 
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `base_dir` | String | `"./uploads"` | Root directory for original image storage |
-| `cache_dir` | String | `"./cache"` | Cache directory for processed images (thumbnails, etc.) |
+| `max_payload_bytes` | u64 | - | Maximum upload size in bytes. Returns HTTP 413 if exceeded. |
+
+### [[storage.endpoints]] Storage Endpoint Configuration
+
+Each `[[storage.endpoints]]` block defines a storage location. The router uses a consistent hash ring weighted by `capacity_bytes` to distribute files.
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `name` | String | **required** | Unique identifier (used in env credentials and admin API). Must be unique across all endpoints. |
+| `description` | String | `""` | Human-readable label (editable via admin API) |
+| `type` | Enum | `"S3"` | Backend type: `"Local"` (filesystem) or `"S3"` (S3-compatible). |
+| `path` | String | - | **Required for Local**: Directory path for stored files. |
+| `bucket` | String | - | S3 bucket name. Can also be set via env: `IMG_ENDPOINT_{UPPER_NAME}__BUCKET` |
+| `region` | String | `"us-east-1"` | S3 region. Also settable via env. |
+| `force_path_style` | bool | `false` | Use path-style S3 addressing (`http://host:port/bucket/key`). Required for MinIO. |
+| `direct_mode` | Enum | `"proxy"` | How clients access images: `"proxy"` (server proxies), `"presigned"` (presigned URLs), `"public"` (direct public URLs). |
+| `direct_url_ttl` | u64 | - | Presigned URL TTL in seconds. Only used when `direct_mode = "presigned"`. |
+| `direct_url_public_endpoint` | String | - | Override S3 endpoint URL in generated direct URLs. Useful for reverse proxy setups. |
+| `capacity_bytes` | i64 | **required** | Maximum storage capacity (bytes). Used for ring weighting: larger capacity = more virtual nodes. |
+| `priority` | i32 | `1` | Routing priority tier (lower = higher priority). Router tries all priority=1 endpoints first; if all full, falls through to priority=2. |
+
+#### S3 Endpoint Environment Variables
+
+For S3 endpoints, credentials are loaded from environment variables using the pattern:
+- `IMG_ENDPOINT_{UPPER_NAME}__ENDPOINT_URL` (optional; omit for AWS S3)
+- `IMG_ENDPOINT_{UPPER_NAME}__ACCESS_KEY` (required)
+- `IMG_ENDPOINT_{UPPER_NAME}__SECRET_KEY` (required)
+- `IMG_ENDPOINT_{UPPER_NAME}__BUCKET` (optional; can use config field)
+- `IMG_ENDPOINT_{UPPER_NAME}__REGION` (optional; defaults to us-east-1)
+- `IMG_ENDPOINT_{UPPER_NAME}__FORCE_PATH_STYLE` (optional; defaults to false)
+
+Name formatting: uppercased, hyphens → underscores. Example: `name = "minio-node1"` → `IMG_ENDPOINT_MINIO_NODE1__ACCESS_KEY`.
 
 ### [image] Global Image Configuration
 
@@ -140,6 +205,7 @@ quality = 70
 | `keep_metadata_fields` | Array | `["copyright", "settings", "time"]` | Metadata fields to keep: `camera`, `settings`, `time`, `copyright`, `location`, `others` |
 
 ### [image.dynamic] Dynamic Processing Configuration
+
 Allows dynamic image generation via URL parameters (e.g., `/v/w_100,h_80/[YYYY/MM/DD]/<hash>.<ext>`).
 
 | Parameter | Type | Default | Description |
@@ -150,6 +216,7 @@ Allows dynamic image generation via URL parameters (e.g., `/v/w_100,h_80/[YYYY/M
 | `max_height` | u32 | `2160` | Maximum allowed height for dynamic processing. |
 
 ### [image.presets.NAME] Preset Dimension Configuration
+
 Multiple presets can be defined using `[image.presets.thumb]`, etc. `default` is a special field for requests without a preset (e.g., `/v/[YYYY/MM/DD]/<hash>.<ext>`). Accessing a non-existent preset still returns `404`.
 
 Rules for `width` and `height`:
@@ -168,6 +235,7 @@ Rules for `width` and `height`:
 | `cache_ttl` | u64 | Global | Cache validity for this preset (seconds) |
 
 ### Environment Variables (Secrets)
+
 Sensitive information must be passed via environment variables, with a prefix defined by `server.env_prefix` (default `IMG`).
 
 | Variable | Description |
@@ -175,3 +243,121 @@ Sensitive information must be passed via environment variables, with a prefix de
 | `IMG_AUTH_TOKEN` | Authentication token for management operations (upload, delete, etc.) |
 | `IMG_JWT_SECRET` | Secret key for generating and verifying authentication JWTs |
 | `IMG_DATABASE_URL` | Database connection string (e.g., SQLite: `sqlite://data.db`; Postgres: `postgres://user:pass@host/db`) |
+
+For S3 storage endpoints, see the S3 Endpoint Environment Variables section above.
+
+## Storage Configuration Examples
+
+### Single Local Endpoint (Minimal Setup)
+
+```toml
+[[storage.endpoints]]
+name           = "local-primary"
+description    = "Primary local filesystem"
+type           = "Local"
+path           = "./data/storage"
+capacity_bytes = 10737418240    # 10 GB
+priority       = 1
+```
+
+### Two Local Endpoints with Priority Tiers
+
+```toml
+# Fast NVMe storage - highest priority
+[[storage.endpoints]]
+name           = "nvme-fast"
+description    = "NVMe primary"
+type           = "Local"
+path           = "/mnt/nvme/storage"
+capacity_bytes = 107374182400   # 100 GB
+priority       = 0              # Highest priority
+
+# HDD fallback - used when NVMe is full
+[[storage.endpoints]]
+name           = "hdd-fallback"
+description    = "HDD fallback"
+type           = "Local"
+path           = "/mnt/hdd/storage"
+capacity_bytes = 1099511627776  # 1 TB
+priority       = 1              # Lower priority
+```
+
+### Local Primary + S3 Failover
+
+```toml
+# Local fast storage
+[[storage.endpoints]]
+name           = "local-origin"
+description    = "Local origin storage"
+type           = "Local"
+path           = "./data/storage"
+capacity_bytes = 107374182400   # 100 GB
+priority       = 0
+
+# S3 cloud storage - used when local is full
+[[storage.endpoints]]
+name           = "cloud-s3"
+description    = "S3-compatible cloud storage"
+type           = "S3"
+bucket         = "my-images"
+region         = "us-east-1"
+direct_mode    = "presigned"
+direct_url_ttl = 3600
+capacity_bytes = 1099511627776  # 1 TB
+priority       = 1
+```
+
+### Multi-Node MinIO Cluster
+
+```toml
+[[storage.endpoints]]
+name           = "minio-node1"
+description    = "MinIO node 1"
+type           = "S3"
+bucket         = "ibed-images"
+region         = "us-east-1"
+force_path_style = true
+direct_mode    = "presigned"
+direct_url_ttl = 3600
+capacity_bytes = 21474836480    # 20 GB
+priority       = 1
+
+[[storage.endpoints]]
+name           = "minio-node2"
+description    = "MinIO node 2"
+type           = "S3"
+bucket         = "ibed-images"
+region         = "us-east-1"
+force_path_style = true
+direct_mode    = "presigned"
+direct_url_ttl = 3600
+capacity_bytes = 53687091200    # 50 GB
+priority       = 1
+
+[[storage.endpoints]]
+name           = "minio-node3"
+description    = "MinIO node 3"
+type           = "S3"
+bucket         = "ibed-images"
+region         = "us-east-1"
+force_path_style = true
+direct_mode    = "public"
+capacity_bytes = 107374182400   # 100 GB
+priority       = 1
+```
+
+Environment variables for the above:
+```bash
+export IMG_ENDPOINT_MINIO_NODE1__ENDPOINT_URL="http://minio1:9000"
+export IMG_ENDPOINT_MINIO_NODE1__ACCESS_KEY="minioadmin"
+export IMG_ENDPOINT_MINIO_NODE1__SECRET_KEY="minioadmin"
+export IMG_ENDPOINT_MINIO_NODE1__BUCKET="ibed-images"
+
+export IMG_ENDPOINT_MINIO_NODE2__ENDPOINT_URL="http://minio2:9000"
+export IMG_ENDPOINT_MINIO_NODE2__ACCESS_KEY="minioadmin"
+export IMG_ENDPOINT_MINIO_NODE2__SECRET_KEY="minioadmin"
+
+export IMG_ENDPOINT_MINIO_NODE3__ENDPOINT_URL="http://minio3:9000"
+export IMG_ENDPOINT_MINIO_NODE3__ACCESS_KEY="minioadmin"
+export IMG_ENDPOINT_MINIO_NODE3__SECRET_KEY="minioadmin"
+```

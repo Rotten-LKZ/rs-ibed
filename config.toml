@@ -3,6 +3,10 @@ host = "0.0.0.0"
 port = 3000
 log_level = "info"
 env_prefix = "IMG"         # Environment variable prefix, e.g., IMG_AUTH_TOKEN, IMG_DATABASE_URL
+# Public base URL for image links. Used by upload API to generate full URLs.
+# If not set, upload API returns relative URLs (e.g., /v/2025/04/04/hash.jpg).
+# Example: "https://images.example.com" → full URL: "https://images.example.com/v/2025/04/04/hash.jpg"
+# public_url = "https://images.example.com"
 # URL path pattern, all accesses are prefixed with /v/
 # "ymd"  → /v/2025/03/19/{hash}.{ext}
 # "ym"   → /v/2025/03/{hash}.{ext}
@@ -18,6 +22,8 @@ cors_max_age = 3600              # Cache time for preflight requests (seconds)
 enable_negotiated_cache = true   # Whether to enable negotiated caching, implementing 304 Not Modified with both etag and last_modified
 cache_max_age = 3600             # Maximum validity for negotiated cache (seconds). Setting to 0 is equivalent to no-cache.
 trash_retention_days = 30        # Automatically permanently delete trashed images after this many days. 0 = disabled.
+# strict_health_check = false    # When enabled, returns 503 (storage unavailable) instead of 404 when image metadata exists but
+                                 # file is missing on all storage nodes. Helps diagnose storage node failures vs truly missing files.
 
 [database]
 driver = "sqlite"          # "sqlite" | "postgres"
@@ -25,9 +31,124 @@ max_connections = 5
 min_connections = 1
 
 [storage]
-type = "local"             # "local"
-base_dir = "./data/uploads"
-cache_dir = "./data/cache"
+# max_payload_bytes = 52428800   # Optional: enforce a maximum upload size (bytes). Returns 413 if exceeded. Uncomment to enable.
+
+# ------------------------------------------
+# Storage Endpoints
+# ------------------------------------------
+# Each [[storage.endpoints]] block defines a storage location.
+# The router uses a consistent hash ring weighted by capacity_bytes to distribute files.
+#
+# Fields:
+#   name           - Unique identifier (used in .env credentials and the admin API)
+#   description    - Human-readable label (editable via admin API)
+#   type           - "Local" (local filesystem) or "S3" (S3-compatible). Defaults to "S3" if omitted.
+#   path           - Required when type = "Local". Directory path for stored files.
+#   bucket         - S3 bucket name (type = "S3"). Can also be set via env: IMG_ENDPOINT_{UPPER_NAME}__BUCKET
+#   region         - S3 region (optional, defaults to us-east-1). Also settable via env.
+#   force_path_style - Use path-style S3 addressing (http://host:port/bucket/key).
+#                      Required for MinIO and most self-hosted S3. Defaults to false (virtual-hosted style).
+#   direct_mode    - How clients access images: "proxy" (server proxies all traffic, default),
+#                    "presigned" (return presigned S3 URLs, clients fetch directly),
+#                    "public" (construct direct public URLs, bucket must be publicly readable).
+#   direct_url_ttl - Presigned URL TTL in seconds. Only used when direct_mode = "presigned".
+#   direct_url_public_endpoint - Override S3 endpoint URL in generated direct URLs.
+#                                 Useful when internal URL differs from client-facing URL (e.g., reverse proxy).
+#   capacity_bytes - Maximum storage this endpoint may hold (bytes); used for ring weighting.
+#                    Config-immutable: cannot be changed via admin API to prevent ring re-sharding.
+#   priority       - Routing priority tier (integer, lower = higher priority). If all endpoints in tier N are full,
+#                    the router falls through to tier N+1.
+#                    Config-immutable: cannot be changed via admin API.
+#
+# S3 credentials for S3 endpoints are loaded from .env using the pattern:
+#   IMG_ENDPOINT_{UPPER_NAME}__ENDPOINT_URL   (optional; omit for AWS S3)
+#   IMG_ENDPOINT_{UPPER_NAME}__ACCESS_KEY
+#   IMG_ENDPOINT_{UPPER_NAME}__SECRET_KEY
+#   IMG_ENDPOINT_{UPPER_NAME}__BUCKET
+#   IMG_ENDPOINT_{UPPER_NAME}__REGION         (optional; defaults to us-east-1)
+#
+# Name is uppercased and hyphens replaced with underscores for the env-var segment.
+# Example: name = "minio-cache" → IMG_ENDPOINT_MINIO_CACHE__ACCESS_KEY
+#
+# Example — single local endpoint (minimal setup):
+#
+[[storage.endpoints]]
+name           = "local-primary"
+description    = "Primary local filesystem"
+type           = "Local"
+path           = "./data/storage"
+capacity_bytes = 10737418240    # 10 GB
+priority       = 1
+
+[[storage.endpoints]]
+name           = "s3-node1"
+description    = "MinIO node 1"
+type           = "S3"
+bucket         = "ibed-images"
+region         = "us-east-1"
+force_path_style = true
+direct_mode    = "presigned"
+direct_url_ttl = 3600             # 1 hour
+capacity_bytes = 21474836480    # 20 GB
+priority       = 1
+
+[[storage.endpoints]]
+name           = "s3-node2"
+description    = "MinIO node 2"
+type           = "S3"
+bucket         = "ibed-images"
+region         = "us-east-1"
+force_path_style = true
+direct_mode    = "public"
+capacity_bytes = 53687091200    # 50 GB
+priority       = 1
+
+[[storage.endpoints]]
+name           = "s3-node3"
+description    = "MinIO node 3"
+type           = "S3"
+bucket         = "ibed-images"
+region         = "us-east-1"
+force_path_style = true
+capacity_bytes = 107374182400   # 100 GB
+priority       = 1
+#
+# Example — two local endpoints in different priority tiers:
+#
+# [[storage.endpoints]]
+# name           = "nvme-fast"
+# description    = "NVMe primary"
+# type           = "Local"
+# path           = "/mnt/nvme/storage"
+# capacity_bytes = 107374182400   # 100 GB
+# priority       = 0              # Highest priority
+#
+# [[storage.endpoints]]
+# name           = "hdd-fallback"
+# description    = "HDD fallback"
+# type           = "Local"
+# path           = "/mnt/hdd/storage"
+# capacity_bytes = 1099511627776  # 1 TB
+# priority       = 1              # Used when tier 0 is full
+#
+# Example — local primary + S3 failover:
+#
+# [[storage.endpoints]]
+# name           = "local-origin"
+# description    = "Local origin storage"
+# type           = "Local"
+# path           = "./data/storage"
+# capacity_bytes = 107374182400   # 100 GB
+# priority       = 0
+#
+# [[storage.endpoints]]
+# name           = "cloud-s3"
+# description    = "S3-compatible cloud storage"
+# type           = "S3"           # Default; can be omitted
+# bucket         = "my-images"    # Or set IMG_ENDPOINT_CLOUD_S3__BUCKET in .env
+# region         = "us-east-1"
+# capacity_bytes = 1099511627776  # 1 TB
+# priority       = 1
 
 [image]
 enable = true              # Whether to enable image processing. If disabled, only metadata fields specified in keep_metadata_fields will be kept and the original image stored; access will return the original image directly. If enabled, EXIF metadata won't be processed during upload; processing will happen during access according to preset dimensions.

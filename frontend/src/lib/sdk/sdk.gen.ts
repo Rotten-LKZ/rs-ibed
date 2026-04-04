@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CheckData, CheckErrors, CheckResponses, CliLoginData, CliLoginErrors, CliLoginResponses, CountImagesData, CountImagesErrors, CountImagesResponses, DeleteImageData, DeleteImageErrors, DeleteImageResponses, DownloadData, DownloadErrors, DownloadResponses, EmptyTrashData, EmptyTrashErrors, EmptyTrashResponses, GetImageData, GetImageErrors, GetImageResponses, ListImagesData, ListImagesErrors, ListImagesResponses, LoginData, LoginErrors, LoginResponses, PermanentDeleteImageData, PermanentDeleteImageErrors, PermanentDeleteImageResponses, RenameImageData, RenameImageErrors, RenameImageResponses, RestoreImageData, RestoreImageErrors, RestoreImageResponses, UploadData, UploadErrors, UploadResponses, ViewData, ViewErrors, ViewResponses } from './types.gen';
+import type { CheckData, CheckErrors, CheckResponses, CliLoginData, CliLoginErrors, CliLoginResponses, CountImagesData, CountImagesErrors, CountImagesResponses, DeleteImageData, DeleteImageErrors, DeleteImageResponses, DownloadData, DownloadErrors, DownloadResponses, EmptyTrashData, EmptyTrashErrors, EmptyTrashResponses, GetImageData, GetImageErrors, GetImageResponses, ListImagesData, ListImagesErrors, ListImagesResponses, ListStorageEndpointsData, ListStorageEndpointsErrors, ListStorageEndpointsResponses, LoginData, LoginErrors, LoginResponses, PermanentDeleteImageData, PermanentDeleteImageErrors, PermanentDeleteImageResponses, RenameImageData, RenameImageErrors, RenameImageResponses, RestoreImageData, RestoreImageErrors, RestoreImageResponses, UpdateStorageEndpointData, UpdateStorageEndpointErrors, UpdateStorageEndpointResponses, UploadData, UploadErrors, UploadResponses, ViewData, ViewErrors, ViewResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -124,6 +124,36 @@ export const restoreImage = <ThrowOnError extends boolean = false>(options: Opti
         }, { scheme: 'bearer', type: 'http' }],
     url: '/api/admin/images/{id}/restore',
     ...options
+});
+
+/**
+ * GET /api/admin/storage/endpoints
+ */
+export const listStorageEndpoints = <ThrowOnError extends boolean = false>(options?: Options<ListStorageEndpointsData, ThrowOnError>) => (options?.client ?? client).get<ListStorageEndpointsResponses, ListStorageEndpointsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'ibed_token',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/api/admin/storage/endpoints',
+    ...options
+});
+
+/**
+ * POST /api/admin/storage/endpoints/{name}/update
+ */
+export const updateStorageEndpoint = <ThrowOnError extends boolean = false>(options: Options<UpdateStorageEndpointData, ThrowOnError>) => (options.client ?? client).post<UpdateStorageEndpointResponses, UpdateStorageEndpointErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'ibed_token',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/api/admin/storage/endpoints/{name}/update',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**

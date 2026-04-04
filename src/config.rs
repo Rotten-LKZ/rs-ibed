@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -25,8 +25,8 @@ impl AppConfig {
             preset.validate(name)?;
         }
 
-        let secrets =
-            Secrets::from_env(&config.server.env_prefix).expect("Failed to load secrets from env");
+        let secrets = Secrets::from_env(&config.server.env_prefix, &config.storage.endpoints)
+            .expect("Failed to load secrets from env");
 
         Ok((config, secrets))
     }
@@ -40,11 +40,20 @@ pub struct ServerConfig {
     pub port: u16,
     pub log_level: LogLevel,
     pub env_prefix: String,
+    /// Public base URL for generating full image links. If not set, relative URLs are returned.
+    /// Example: "https://images.example.com" or "https://cdn.example.com/ibed"
+    #[serde(default)]
+    pub public_url: Option<String>,
     pub url_pattern: UrlPattern,
     pub cors_allow_origins: Vec<String>,
     pub cors_max_age: u64,
     pub enable_negotiated_cache: bool,
     pub cache_max_age: u64,
+    /// When enabled, return 503 Service Unavailable instead of 404 Not Found
+    /// when the image metadata exists but cannot be found on any storage node.
+    /// This helps distinguish between "image never existed" and "storage node offline".
+    #[serde(default)]
+    pub strict_health_check: bool,
     #[serde(default)]
     pub trash_retention_days: u64,
 }
@@ -56,11 +65,13 @@ impl Default for ServerConfig {
             port: 3000,
             log_level: LogLevel::default(),
             env_prefix: "IMG".into(),
+            public_url: None,
             url_pattern: UrlPattern::default(),
             cors_allow_origins: vec!["*".into()],
             cors_max_age: 3600,
             enable_negotiated_cache: true,
             cache_max_age: 3600,
+            strict_health_check: false,
             trash_retention_days: 0,
         }
     }
@@ -168,17 +179,91 @@ impl fmt::Display for DatabaseDriver {
 
 #[derive(Debug, Deserialize)]
 pub struct StorageConfig {
-    pub base_dir: String,
-    pub cache_dir: String,
+    // Legacy fields — tolerated but ignored
+    #[serde(default)]
+    pub base_dir: Option<String>,
+    #[serde(default)]
+    pub cache_dir: Option<String>,
+    #[allow(dead_code)]
+    #[serde(default, rename = "type")]
+    pub storage_type: Option<String>,
+
+    pub max_payload_bytes: Option<u64>,
+    #[serde(default)]
+    pub endpoints: Vec<EndpointConfig>,
 }
 
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
-            base_dir: "./uploads".into(),
-            cache_dir: "./cache".into(),
+            base_dir: None,
+            cache_dir: None,
+            storage_type: None,
+            max_payload_bytes: None,
+            endpoints: vec![],
         }
     }
+}
+
+/// Storage backend type for an endpoint.
+#[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
+pub enum EndpointType {
+    /// Local filesystem. Requires `path`.
+    Local,
+    /// S3-compatible object storage (default). Credentials loaded from env.
+    #[default]
+    S3,
+}
+
+/// How clients access images stored on an S3 endpoint.
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum DirectMode {
+    /// All traffic proxied through rs-ibed server (default).
+    #[default]
+    Proxy,
+    /// Return presigned S3 URLs; clients fetch directly from S3 (time-limited).
+    Presigned,
+    /// Construct direct public S3 URLs; clients fetch directly (bucket must be public).
+    Public,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EndpointConfig {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// Backend type: "Local" or "S3" (default).
+    #[serde(rename = "type", default)]
+    pub endpoint_type: EndpointType,
+    /// Local filesystem path (required when type = "Local").
+    pub path: Option<String>,
+    /// S3 bucket name (optional in config; can be set via env).
+    pub bucket: Option<String>,
+    /// S3 region (optional; defaults to us-east-1). Can also be set via env.
+    pub region: Option<String>,
+    /// Whether to use path-style addressing for S3 (e.g. http://host:port/bucket/key).
+    /// Required for MinIO and most self-hosted S3 implementations. Defaults to false.
+    #[serde(default)]
+    pub force_path_style: Option<bool>,
+    pub capacity_bytes: i64,
+    #[serde(default = "default_priority")]
+    pub priority: i32,
+    /// How clients access images: "proxy" (server proxies), "presigned" (presigned URLs),
+    /// or "public" (direct public URLs). Defaults to "proxy".
+    #[serde(default)]
+    pub direct_mode: DirectMode,
+    /// Presigned URL TTL in seconds. Only used when direct_mode = "presigned".
+    #[serde(default)]
+    pub direct_url_ttl: Option<u64>,
+    /// Override S3 endpoint URL used when generating presigned/public URLs.
+    /// Useful when internal URL differs from client-facing URL (e.g., reverse proxy).
+    #[serde(default)]
+    pub direct_url_public_endpoint: Option<String>,
+}
+
+fn default_priority() -> i32 {
+    1
 }
 
 // ── Image ────────────────────────────────────────────────────
@@ -331,23 +416,59 @@ impl PresetConfig {
 // ── Secrets ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
+pub struct EndpointSecrets {
+    pub endpoint_url: Option<String>,
+    pub access_key: Option<String>,
+    pub secret_key: Option<String>,
+    pub bucket: Option<String>,
+    pub region: Option<String>,
+    pub force_path_style: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Secrets {
     pub auth_token: String,
     pub jwt_secret: String,
     pub database_url: String,
+    pub endpoints: HashMap<String, EndpointSecrets>,
 }
 
 impl Secrets {
-    pub fn from_env(prefix: &str) -> Result<Self, String> {
+    pub fn from_env(prefix: &str, endpoints: &[EndpointConfig]) -> Result<Self, String> {
         let get_var = |s: &str| {
             let key = format!("{}_{}", prefix, s);
             std::env::var(&key).map_err(|_| format!("environment variable {} is not set", key))
         };
 
+        let get_opt_var = |s: &str| -> Option<String> {
+            let key = format!("{}_{}", prefix, s);
+            std::env::var(&key).ok()
+        };
+
+        let endpoint_secrets = endpoints
+            .iter()
+            .filter(|ep| ep.endpoint_type == EndpointType::S3)
+            .map(|ep| {
+                let upper = ep.name.to_uppercase().replace('-', "_");
+                let seg = format!("ENDPOINT_{upper}");
+                let secrets = EndpointSecrets {
+                    endpoint_url: get_opt_var(&format!("{seg}__ENDPOINT_URL")),
+                    access_key: get_opt_var(&format!("{seg}__ACCESS_KEY")),
+                    secret_key: get_opt_var(&format!("{seg}__SECRET_KEY")),
+                    bucket: get_opt_var(&format!("{seg}__BUCKET")),
+                    region: get_opt_var(&format!("{seg}__REGION")),
+                    force_path_style: get_opt_var(&format!("{seg}__FORCE_PATH_STYLE"))
+                        .and_then(|v| v.parse::<bool>().ok()),
+                };
+                (ep.name.clone(), secrets)
+            })
+            .collect();
+
         Ok(Self {
             auth_token: get_var("AUTH_TOKEN")?,
             jwt_secret: get_var("JWT_SECRET")?,
             database_url: get_var("DATABASE_URL")?,
+            endpoints: endpoint_secrets,
         })
     }
 }

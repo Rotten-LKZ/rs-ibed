@@ -5,6 +5,7 @@ pub mod postgres;
 use std::sync::Arc;
 use crate::config::{AppConfig, DatabaseDriver, Secrets};
 use crate::error::{AppError, AppResult};
+use crate::storage::StoragePool;
 use repo::ImageRepo;
 
 pub async fn init_repo(config: &AppConfig, secrets: &Secrets) -> AppResult<Arc<dyn ImageRepo>> {
@@ -50,6 +51,36 @@ pub async fn init_repo(config: &AppConfig, secrets: &Secrets) -> AppResult<Arc<d
                 .map_err(|e| AppError::Internal(e.to_string()))?;
 
             Ok::<Arc<dyn ImageRepo>, AppError>(Arc::new(postgres::PgImageRepo::new(pool)))
+        }
+    }
+}
+
+/// Create a separate connection pool for the storage manager.
+/// Migrations must have already run (call init_repo first).
+pub async fn init_storage_pool(config: &AppConfig, secrets: &Secrets) -> AppResult<StoragePool> {
+    match config.database.driver {
+        DatabaseDriver::Sqlite => {
+            let opts = secrets.database_url
+                .parse::<sqlx::sqlite::SqliteConnectOptions>()
+                .map_err(|e| AppError::Internal(e.to_string()))?
+                .create_if_missing(true);
+
+            let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(2)
+                .min_connections(1)
+                .connect_with(opts)
+                .await?;
+
+            Ok(StoragePool::Sqlite(pool))
+        }
+        DatabaseDriver::Postgres => {
+            let pool = sqlx::postgres::PgPoolOptions::new()
+                .max_connections(2)
+                .min_connections(1)
+                .connect(&secrets.database_url)
+                .await?;
+
+            Ok(StoragePool::Postgres(pool))
         }
     }
 }

@@ -1,5 +1,10 @@
 <script lang="ts">
-	import { emptyAllTrash, fetchImages, permanentDeleteManagedImage, restoreManagedImage } from '$lib/api';
+	import {
+		emptyAllTrash,
+		fetchImages,
+		permanentDeleteManagedImage,
+		restoreManagedImage
+	} from '$lib/api';
 	import { t } from '$lib/i18n/index.svelte';
 	import { onMount } from 'svelte';
 	import type { ImageModel } from '$lib/sdk';

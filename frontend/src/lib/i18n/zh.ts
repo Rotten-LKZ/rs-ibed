@@ -61,6 +61,7 @@ export default {
 	'images.copyLink': '复制链接',
 	'images.copied': '已复制！',
 	'images.created': '创建时间',
+	'images.storageUnavailable': '存储下线',
 
 	'detail.title': '图片详情',
 	'detail.back': '返回',
@@ -72,9 +73,11 @@ export default {
 	'detail.updated': '更新时间',
 	'detail.viewUrl': '查看链接',
 	'detail.downloadUrl': '下载链接',
+	'detail.directUrl': 'S3 直链',
 	'detail.status': '状态',
 	'detail.active': '正常',
 	'detail.deleted': '已删除',
+	'detail.storageUnavailable': '存储下线',
 	'detail.notFound': '图片未找到。',
 
 	'upload.title': '上传',
@@ -116,6 +119,27 @@ export default {
 	'trash.emptyTrashConfirm': '将永久删除回收站中的所有图片，此操作不可撤销，是否继续？',
 	'trash.permanentDelete': '永久删除',
 	'trash.permanentDeleteConfirm': '确定要永久删除这张图片吗？此操作不可撤销。',
+
+	'endpoints.title': '存储节点',
+	'endpoints.loading': '正在加载存储节点...',
+	'endpoints.empty': '暂无活跃存储节点。',
+	'endpoints.type': '类型',
+	'endpoints.priority': '优先级',
+	'endpoints.status': '状态',
+	'endpoints.capacity': '容量',
+	'endpoints.used': '已用',
+	'endpoints.free': '剩余',
+	'endpoints.usage': '使用率',
+	'endpoints.active': '活跃',
+	'endpoints.disabled': '已禁用',
+	'endpoints.enable': '启用',
+	'endpoints.disable': '禁用',
+	'endpoints.editDescription': '编辑描述',
+	'endpoints.descriptionPrompt': '输入新的描述',
+	'endpoints.actionError': '操作失败。',
+	'endpoints.immutableHint': '优先级和容量在 config.toml 中定义，无法在此修改。',
+
+	'nav.endpoints': '存储',
 
 	'theme.toggle': '切换主题',
 	'lang.toggle': '切换语言'

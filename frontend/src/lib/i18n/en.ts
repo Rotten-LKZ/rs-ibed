@@ -62,6 +62,7 @@ export default {
 	'images.copyLink': 'Copy link',
 	'images.copied': 'Copied!',
 	'images.created': 'Created',
+	'images.storageUnavailable': 'Storage offline',
 
 	'detail.title': 'Image detail',
 	'detail.back': 'Back',
@@ -73,9 +74,11 @@ export default {
 	'detail.updated': 'Updated',
 	'detail.viewUrl': 'View URL',
 	'detail.downloadUrl': 'Download URL',
+	'detail.directUrl': 'Direct S3 URL',
 	'detail.status': 'Status',
 	'detail.active': 'Active',
 	'detail.deleted': 'Deleted',
+	'detail.storageUnavailable': 'Storage offline',
 	'detail.notFound': 'Image not found.',
 
 	'upload.title': 'Upload',
@@ -115,9 +118,32 @@ export default {
 	'trash.restoreAll': 'Restore all',
 	'trash.info': 'Soft-deleted images can be restored at any time.',
 	'trash.emptyTrash': 'Empty trash',
-	'trash.emptyTrashConfirm': 'This will permanently delete all trashed images. This action cannot be undone. Continue?',
+	'trash.emptyTrashConfirm':
+		'This will permanently delete all trashed images. This action cannot be undone. Continue?',
 	'trash.permanentDelete': 'Delete permanently',
 	'trash.permanentDeleteConfirm': 'Permanently delete this image? This action cannot be undone.',
+
+	'endpoints.title': 'Storage Endpoints',
+	'endpoints.loading': 'Loading endpoints...',
+	'endpoints.empty': 'No active storage endpoints.',
+	'endpoints.type': 'Type',
+	'endpoints.priority': 'Priority',
+	'endpoints.status': 'Status',
+	'endpoints.capacity': 'Capacity',
+	'endpoints.used': 'Used',
+	'endpoints.free': 'Free',
+	'endpoints.usage': 'Usage',
+	'endpoints.active': 'Active',
+	'endpoints.disabled': 'Disabled',
+	'endpoints.enable': 'Enable',
+	'endpoints.disable': 'Disable',
+	'endpoints.editDescription': 'Edit description',
+	'endpoints.descriptionPrompt': 'Enter a new description',
+	'endpoints.actionError': 'Action failed.',
+	'endpoints.immutableHint':
+		'Priority and capacity are defined in config.toml and cannot be changed here.',
+
+	'nav.endpoints': 'Storage',
 
 	'theme.toggle': 'Toggle theme',
 	'lang.toggle': 'Toggle language'

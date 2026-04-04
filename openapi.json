@@ -6,7 +6,7 @@
     "license": {
       "name": ""
     },
-    "version": "0.0.1"
+    "version": "0.0.2"
   },
   "paths": {
     "/api/admin/images": {
@@ -423,6 +423,100 @@
         ]
       }
     },
+    "/api/admin/storage/endpoints": {
+      "get": {
+        "tags": [
+          "handlers::admin"
+        ],
+        "summary": "GET /api/admin/storage/endpoints",
+        "operationId": "list_storage_endpoints",
+        "responses": {
+          "200": {
+            "description": "List of storage endpoints",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StorageEndpointResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/storage/endpoints/{name}/update": {
+      "post": {
+        "tags": [
+          "handlers::admin"
+        ],
+        "summary": "POST /api/admin/storage/endpoints/{name}/update",
+        "operationId": "update_storage_endpoint",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Endpoint name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEndpointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cannot change priority or capacity via API"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/auth/check": {
       "get": {
         "tags": [
@@ -671,6 +765,15 @@
           }
         }
       },
+      "DirectMode": {
+        "type": "string",
+        "description": "How clients access images stored on an S3 endpoint.",
+        "enum": [
+          "proxy",
+          "presigned",
+          "public"
+        ]
+      },
       "ImageCountResponse": {
         "type": "object",
         "required": [
@@ -695,8 +798,21 @@
           "view_url"
         ],
         "properties": {
+          "direct_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "image": {
             "$ref": "#/components/schemas/ImageModel"
+          },
+          "storage_available": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the image file is available on at least one active storage node.\nOnly populated in admin API responses; null means not checked."
           },
           "view_url": {
             "type": "string"
@@ -724,6 +840,12 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "direct_url": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "display_name": {
             "type": "string"
@@ -754,6 +876,13 @@
           "size": {
             "type": "integer",
             "format": "int64"
+          },
+          "storage_available": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the image file is available on at least one active storage node.\nOnly populated in admin API responses; null means not checked."
           },
           "updated_at": {
             "type": "string",
@@ -946,6 +1075,69 @@
           }
         }
       },
+      "StorageEndpointResponse": {
+        "type": "object",
+        "description": "Response returned by GET /api/admin/storage/endpoints —\nmerges live in-memory state with config-immutable fields.",
+        "required": [
+          "name",
+          "description",
+          "endpoint_type",
+          "capacity_bytes",
+          "used_size",
+          "priority",
+          "status",
+          "direct_mode"
+        ],
+        "properties": {
+          "capacity_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "description": {
+            "type": "string"
+          },
+          "direct_mode": {
+            "$ref": "#/components/schemas/DirectMode",
+            "description": "How clients access images: \"proxy\", \"presigned\", or \"public\"."
+          },
+          "endpoint_type": {
+            "type": "string",
+            "description": "Backend type from config: \"Local\" or \"S3\"."
+          },
+          "name": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "status": {
+            "type": "string"
+          },
+          "used_size": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "UpdateEndpointRequest": {
+        "type": "object",
+        "description": "Only `status` and `description` are mutable via the API.\n`priority` and `capacity_bytes` are config-immutable.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "UploadRequest": {
         "type": "object",
         "required": [
@@ -979,6 +1171,12 @@
           "height"
         ],
         "properties": {
+          "direct_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "file_name": {
             "type": "string"
           },

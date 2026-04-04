@@ -12,6 +12,8 @@
 
 	let image = $state<ImageModel | null>(null);
 	let viewUrl = $state('');
+	let directUrl = $state<string | null>(null);
+	let storageAvailable = $state<boolean | null>(null);
 	let loading = $state(true);
 	let error = $state('');
 	let busy = $state(false);
@@ -22,6 +24,8 @@
 		const appBase = resolve('/').replace(/\/$/, '');
 		return `${appBase}${viewUrl}`;
 	});
+	// Prefer direct URL for preview if available (S3 direct access)
+	const previewUrl = $derived(directUrl ?? resolvedViewUrl);
 	const absoluteViewUrl = $derived.by(() => {
 		if (!resolvedViewUrl) return '';
 		return page.url ? new URL(resolvedViewUrl, page.url.origin).href : resolvedViewUrl;
@@ -42,6 +46,8 @@
 			const result = await fetchImageDetail(id);
 			image = result.image;
 			viewUrl = result.view_url;
+			directUrl = result.direct_url ?? null;
+			storageAvailable = result.storage_available ?? null;
 		} catch {
 			error = t('detail.notFound');
 		} finally {
@@ -125,7 +131,7 @@
 			>
 				{#if !image.is_deleted}
 					<img
-						src={resolvedViewUrl}
+						src={previewUrl}
 						alt={image.display_name}
 						class="max-h-[calc(70vh-2rem)] max-w-full object-contain"
 					/>
@@ -149,6 +155,12 @@
 						<span
 							class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950/50 dark:text-green-300"
 							>{t('detail.active')}</span
+						>
+					{/if}
+					{#if storageAvailable === false}
+						<span
+							class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
+							>⚠️ {t('detail.storageUnavailable')}</span
 						>
 					{/if}
 				</div>
@@ -206,6 +218,14 @@
 								{absoluteViewUrl}
 							</p>
 						</div>
+						{#if directUrl}
+							<div>
+								<p class="text-xs text-gray-500 dark:text-gray-400">{t('detail.directUrl')}</p>
+								<p class="font-mono text-sm break-all text-green-600 dark:text-green-400">
+									{directUrl}
+								</p>
+							</div>
+						{/if}
 						<div>
 							<p class="text-xs text-gray-500 dark:text-gray-400">{t('detail.downloadUrl')}</p>
 							<p class="font-mono text-sm break-all text-blue-600 dark:text-blue-400">

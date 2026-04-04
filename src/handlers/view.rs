@@ -1,12 +1,12 @@
 use std::fmt::Write as _;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
 
 use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
-use crate::config::{FitMode, ImageFormat, ImageConfig, PresetConfig};
+use crate::config::{DirectMode, FitMode, ImageFormat, ImageConfig, PresetConfig};
 use crate::error::{AppError, AppResult};
 use crate::image_proc::{format_to_ext, format_to_mime, process_image};
 use crate::path_parser::{DynamicParams, PathVariant, parse_v_path};
@@ -75,9 +75,28 @@ pub async fn view(
             None
         };
 
-        let orig_path =
-            storage::original_path(&cfg.storage.base_dir, &record.hash, &record.extension);
-        let raw = tokio::fs::read(&orig_path).await?;
+        let origin_key = storage::object_key_original(&record.hash, &record.extension);
+        let probes = {
+            let router = state.storage_manager.router_read();
+            router.probe_for_read(&record.hash)
+        };
+        let mut raw: Option<Vec<u8>> = None;
+        for ep in &probes {
+            if let Ok(Some(bytes)) = ep.backend.get_object(&origin_key).await {
+                raw = Some(bytes);
+                break;
+            }
+        }
+        let raw = match raw {
+            Some(r) => r,
+            None => {
+                return Err(if cfg.server.strict_health_check {
+                    AppError::StorageUnavailable
+                } else {
+                    AppError::NotFound
+                });
+            }
+        };
 
         return Ok(build_response(
             raw,
@@ -121,49 +140,85 @@ pub async fn view(
         }
     }
 
-    let cache_path = storage::cache_path(
-        &cfg.storage.cache_dir,
+    let cache_key = storage::object_key_cache(
         &resolved.variant_key,
         &record.hash,
         output_ext,
     );
 
-    if let Ok(meta) = tokio::fs::metadata(&cache_path).await {
-        let is_fresh = if resolved.disk_ttl == 0 {
-            true
-        } else {
-            meta.modified()
-                .ok()
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|mtime| {
-                    let now = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default();
-                    now.as_secs().saturating_sub(mtime.as_secs()) < resolved.disk_ttl
-                })
-                .unwrap_or(false)
-        };
+    // Probe all endpoints for the cached variant (clockwise ring order)
+    let probes = {
+        let router = state.storage_manager.router_read();
+        router.probe_for_read(&record.hash)
+    };
 
-        if is_fresh {
-            let bytes = tokio::fs::read(&cache_path).await?;
-            let mime = if effective_format == ImageFormat::Original {
-                record.mime_type.as_str()
-            } else {
-                format_to_mime(effective_format)
-            };
-            return Ok(build_response(
-                bytes,
-                mime,
-                negotiate,
-                cfg.server.cache_max_age,
-                resolved.disk_ttl,
-                etag.as_deref(),
-            ));
+    for ep in &probes {
+        match ep.backend.head_object(&cache_key).await {
+            Ok(Some(_)) => {
+                // If the endpoint supports direct access, redirect instead of proxying
+                if ep.direct_mode != DirectMode::Proxy {
+                    let direct_url = match ep.direct_mode {
+                        DirectMode::Presigned => {
+                            let ttl = ep.direct_url_ttl.unwrap_or(3600);
+                            ep.backend
+                                .presigned_get_url(&cache_key, std::time::Duration::from_secs(ttl))
+                                .await
+                                .ok()
+                                .flatten()
+                        }
+                        DirectMode::Public => ep.backend.public_url(&cache_key),
+                        DirectMode::Proxy => unreachable!(),
+                    };
+                    if let Some(url) = direct_url {
+                        return Ok(Response::builder()
+                            .status(StatusCode::FOUND)
+                            .header(header::LOCATION, &url)
+                            .header(header::CACHE_CONTROL, format!("max-age={}", cfg.server.cache_max_age))
+                            .body(Body::empty())
+                            .unwrap());
+                    }
+                }
+
+                // Fallback: proxy the bytes
+                if let Ok(Some(bytes)) = ep.backend.get_object(&cache_key).await {
+                    let mime = if effective_format == ImageFormat::Original {
+                        record.mime_type.as_str()
+                    } else {
+                        format_to_mime(effective_format)
+                    };
+                    return Ok(build_response(
+                        bytes,
+                        mime,
+                        negotiate,
+                        cfg.server.cache_max_age,
+                        resolved.disk_ttl,
+                        etag.as_deref(),
+                    ));
+                }
+            }
+            _ => continue,
         }
     }
 
-    let orig_path = storage::original_path(&cfg.storage.base_dir, &record.hash, &record.extension);
-    let raw = tokio::fs::read(&orig_path).await?;
+    // Cache miss — read from any endpoint (probe all in ring order)
+    let origin_key = storage::object_key_original(&record.hash, &record.extension);
+    let mut raw: Option<Vec<u8>> = None;
+    for ep in &probes {
+        if let Ok(Some(bytes)) = ep.backend.get_object(&origin_key).await {
+            raw = Some(bytes);
+            break;
+        }
+    }
+    let raw = match raw {
+        Some(r) => r,
+        None => {
+            return Err(if cfg.server.strict_health_check {
+                AppError::StorageUnavailable
+            } else {
+                AppError::NotFound
+            });
+        }
+    };
 
     let (processed, mime) = if effective_format == ImageFormat::Original {
         (raw, record.mime_type.clone())
@@ -171,10 +226,19 @@ pub async fn view(
         process_image(&raw, &resolved.preset, image_cfg, &state.workers).await?
     };
 
-    if let Some(parent) = cache_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
+    // Try to cache the processed result
+    let processed_size = processed.len() as i64;
+    let cache_ep = {
+        let router = state.storage_manager.router_read();
+        router
+            .select_for_write(&record.hash, processed_size)
+            .map(|ep| (Arc::clone(&ep.backend), ep.name.clone()))
+    };
+    if let Some((cache_backend, ep_name)) = cache_ep {
+        if cache_backend.put_object(&cache_key, processed.clone()).await.is_ok() {
+            let _ = state.storage_manager.adjust_used_size(&ep_name, processed_size).await;
+        }
     }
-    tokio::fs::write(&cache_path, &processed).await?;
 
     Ok(build_response(
         processed,
@@ -230,8 +294,19 @@ pub async fn download(
         None
     };
 
-    let orig_path = storage::original_path(&cfg.storage.base_dir, &record.hash, &record.extension);
-    let raw = tokio::fs::read(&orig_path).await?;
+    let origin_key = storage::object_key_original(&record.hash, &record.extension);
+    let probes = {
+        let router = state.storage_manager.router_read();
+        router.probe_for_read(&record.hash)
+    };
+    let mut raw: Option<Vec<u8>> = None;
+    for ep in &probes {
+        if let Ok(Some(bytes)) = ep.backend.get_object(&origin_key).await {
+            raw = Some(bytes);
+            break;
+        }
+    }
+    let raw = raw.ok_or(AppError::NotFound)?;
 
     let mut builder = Response::builder()
         .header(header::CONTENT_TYPE, record.mime_type.as_str())

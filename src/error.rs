@@ -28,6 +28,9 @@ pub enum AppError {
     #[error("not found")]
     NotFound,
 
+    #[error("storage node offline or source file missing")]
+    StorageUnavailable,
+
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -42,6 +45,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".into()),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "forbidden".into()),
             AppError::NotFound => (StatusCode::NOT_FOUND, "not found".into()),
+            AppError::StorageUnavailable => (StatusCode::SERVICE_UNAVAILABLE, "storage node offline or source file missing".into()),
             AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
         };
 

@@ -17,18 +17,30 @@ export type CliLoginQuery = {
     token: string;
 };
 
+/**
+ * How clients access images stored on an S3 endpoint.
+ */
+export type DirectMode = 'proxy' | 'presigned' | 'public';
+
 export type ImageCountResponse = {
     active: number;
     in_trash: number;
 };
 
 export type ImageDetailResponse = {
+    direct_url?: string | null;
     image: ImageModel;
+    /**
+     * Whether the image file is available on at least one active storage node.
+     * Only populated in admin API responses; null means not checked.
+     */
+    storage_available?: boolean | null;
     view_url: string;
 };
 
 export type ImageListItem = {
     created_at: string;
+    direct_url?: string | null;
     display_name: string;
     extension: string;
     file_name: string;
@@ -38,6 +50,11 @@ export type ImageListItem = {
     is_deleted: boolean;
     mime_type: string;
     size: number;
+    /**
+     * Whether the image file is available on at least one active storage node.
+     * Only populated in admin API responses; null means not checked.
+     */
+    storage_available?: boolean | null;
     updated_at: string;
     user_id?: string | null;
     view_url: string;
@@ -106,6 +123,36 @@ export type RenameRequest = {
     display_name: string;
 };
 
+/**
+ * Response returned by GET /api/admin/storage/endpoints —
+ * merges live in-memory state with config-immutable fields.
+ */
+export type StorageEndpointResponse = {
+    capacity_bytes: number;
+    description: string;
+    /**
+     * How clients access images: "proxy", "presigned", or "public".
+     */
+    direct_mode: DirectMode;
+    /**
+     * Backend type from config: "Local" or "S3".
+     */
+    endpoint_type: string;
+    name: string;
+    priority: number;
+    status: string;
+    used_size: number;
+};
+
+/**
+ * Only `status` and `description` are mutable via the API.
+ * `priority` and `capacity_bytes` are config-immutable.
+ */
+export type UpdateEndpointRequest = {
+    description?: string | null;
+    status?: string | null;
+};
+
 export type UploadRequest = {
     /**
      * Image file to upload
@@ -119,6 +166,7 @@ export type UploadRequest = {
 };
 
 export type UploadResponse = {
+    direct_url?: string | null;
     file_name: string;
     hash: string;
     height: number;
@@ -386,6 +434,65 @@ export type RestoreImageResponses = {
 };
 
 export type RestoreImageResponse = RestoreImageResponses[keyof RestoreImageResponses];
+
+export type ListStorageEndpointsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/admin/storage/endpoints';
+};
+
+export type ListStorageEndpointsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+};
+
+export type ListStorageEndpointsResponses = {
+    /**
+     * List of storage endpoints
+     */
+    200: Array<StorageEndpointResponse>;
+};
+
+export type ListStorageEndpointsResponse = ListStorageEndpointsResponses[keyof ListStorageEndpointsResponses];
+
+export type UpdateStorageEndpointData = {
+    body: UpdateEndpointRequest;
+    path: {
+        /**
+         * Endpoint name
+         */
+        name: string;
+    };
+    query?: never;
+    url: '/api/admin/storage/endpoints/{name}/update';
+};
+
+export type UpdateStorageEndpointErrors = {
+    /**
+     * Cannot change priority or capacity via API
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+};
+
+export type UpdateStorageEndpointResponses = {
+    /**
+     * Updated
+     */
+    200: OkResponse;
+};
+
+export type UpdateStorageEndpointResponse = UpdateStorageEndpointResponses[keyof UpdateStorageEndpointResponses];
 
 export type CheckData = {
     body?: never;

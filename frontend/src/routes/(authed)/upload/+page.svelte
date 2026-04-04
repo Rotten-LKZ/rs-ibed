@@ -70,6 +70,14 @@
 	function copyUrl(url: string) {
 		navigator.clipboard.writeText(url);
 	}
+
+	function getFullUrl(url: string): string {
+		if (url.startsWith('http://') || url.startsWith('https://')) {
+			return url;
+		}
+		const base = window.location.origin;
+		return `${base}${url}`;
+	}
 </script>
 
 <div class="max-w-2xl space-y-6">
@@ -211,6 +219,7 @@
 						<p class="text-sm text-red-600 dark:text-red-400">{r.error}</p>
 					</div>
 				{:else if r.result}
+					{@const displayUrl = r.result.direct_url ?? getFullUrl(r.result.url)}
 					<div
 						class="space-y-2 rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950/40"
 					>
@@ -220,10 +229,10 @@
 						<div class="flex items-center gap-2">
 							<code
 								class="min-w-0 flex-1 truncate rounded bg-green-100 px-2 py-1 text-xs text-green-900 dark:bg-green-900/40 dark:text-green-200"
-								>{r.result.url}</code
+								>{displayUrl}</code
 							>
 							<button
-								onclick={() => copyUrl(r.result!.url)}
+								onclick={() => copyUrl(displayUrl)}
 								class="shrink-0 rounded px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100 dark:text-green-300 dark:hover:bg-green-900/40"
 								>{t('images.copyLink')}</button
 							>

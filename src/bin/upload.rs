@@ -89,7 +89,13 @@ async fn main() {
                     let json: serde_json::Value =
                         serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
                     let url = json["url"].as_str().unwrap_or("");
-                    let full_url = format!("{}{}", cli.url.trim_end_matches('/'), url);
+                    // If API returns full URL (starts with http), use it directly;
+                    // otherwise, prepend the CLI-provided base URL
+                    let full_url = if url.starts_with("http://") || url.starts_with("https://") {
+                        url.to_string()
+                    } else {
+                        format!("{}{}", cli.url.trim_end_matches('/'), url)
+                    };
                     println!("{full_url}");
                 } else {
                     eprintln!("error: {} HTTP {status}: {body}", file_name);

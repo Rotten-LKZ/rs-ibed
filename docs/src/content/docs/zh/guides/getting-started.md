@@ -76,9 +76,13 @@ driver = "sqlite"
 max_connections = 5
 min_connections = 1
 
-[storage]
-base_dir = "./uploads"
-cache_dir = "./cache"
+[[storage.endpoints]]
+name           = "local-primary"
+description    = "本地主存储"
+type           = "Local"
+path           = "./data/storage"
+capacity_bytes = 10737418240    # 10 GB
+priority       = 1
 
 [image]
 enable = true
@@ -109,6 +113,19 @@ max_height = 2160
 | `IMG_DATABASE_URL` | 数据库连接地址 |
 
 如果你修改了 `server.env_prefix`，这里的前缀也要一起变化。
+
+### S3 存储端点凭证
+
+对于 config.toml 中的每个 S3 `[[storage.endpoints]]` 端点，使用以下命名模式提供凭证：
+- `IMG_ENDPOINT_{大写名称}__ACCESS_KEY`
+- `IMG_ENDPOINT_{大写名称}__SECRET_KEY`
+
+可选字段：
+- `IMG_ENDPOINT_{大写名称}__BUCKET`
+- `IMG_ENDPOINT_{大写名称}__ENDPOINT_URL`
+- `IMG_ENDPOINT_{大写名称}__REGION`
+
+名称需转为大写，连字符替换为下划线。例如 `name = "minio-cache"` 对应 `IMG_ENDPOINT_MINIO_CACHE__ACCESS_KEY`。
 
 ## 启动后可以访问什么
 

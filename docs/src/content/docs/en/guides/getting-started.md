@@ -76,9 +76,13 @@ driver = "sqlite"
 max_connections = 5
 min_connections = 1
 
-[storage]
-base_dir = "./uploads"
-cache_dir = "./cache"
+[[storage.endpoints]]
+name           = "local-primary"
+description    = "Primary local storage"
+type           = "Local"
+path           = "./data/storage"
+capacity_bytes = 10737418240    # 10 GB
+priority       = 1
 
 [image]
 enable = true
@@ -109,6 +113,19 @@ By default, the service reads environment variables using the `IMG_` prefix:
 | `IMG_DATABASE_URL` | Database connection string |
 
 If you change `server.env_prefix`, update these names accordingly.
+
+### S3 storage endpoint credentials
+
+For each S3 `[[storage.endpoints]]` entry in config.toml, provide credentials using the pattern:
+- `IMG_ENDPOINT_{UPPER_NAME}__ACCESS_KEY`
+- `IMG_ENDPOINT_{UPPER_NAME}__SECRET_KEY`
+
+Optional fields:
+- `IMG_ENDPOINT_{UPPER_NAME}__BUCKET`
+- `IMG_ENDPOINT_{UPPER_NAME}__ENDPOINT_URL`
+- `IMG_ENDPOINT_{UPPER_NAME}__REGION`
+
+The name is uppercased and hyphens replaced with underscores. For example, `name = "minio-cache"` becomes `IMG_ENDPOINT_MINIO_CACHE__ACCESS_KEY`.
 
 ## Available endpoints after startup
 

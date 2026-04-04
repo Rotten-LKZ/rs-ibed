@@ -1,0 +1,77 @@
+services:
+  minio-node1:
+    image: minio/minio:latest
+    container_name: ibed-minio-node1
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - ./data/s3/node1:/data
+    ports:
+      - "9010:9000"
+      - "9011:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-node2:
+    image: minio/minio:latest
+    container_name: ibed-minio-node2
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - ./data/s3/node2:/data
+    ports:
+      - "9020:9000"
+      - "9021:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-node3:
+    image: minio/minio:latest
+    container_name: ibed-minio-node3
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - ./data/s3/node3:/data
+    ports:
+      - "9030:9000"
+      - "9031:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # MinIO Client: 自动创建 bucket
+  mc-init:
+    image: minio/mc:latest
+    container_name: ibed-mc-init
+    depends_on:
+      minio-node1:
+        condition: service_healthy
+      minio-node2:
+        condition: service_healthy
+      minio-node3:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set node1 http://minio-node1:9000 minioadmin minioadmin123 &&
+        mc alias set node2 http://minio-node2:9000 minioadmin minioadmin123 &&
+        mc alias set node3 http://minio-node3:9000 minioadmin minioadmin123 &&
+        mc mb --ignore-existing node1/ibed-images &&
+        mc mb --ignore-existing node2/ibed-images &&
+        mc mb --ignore-existing node3/ibed-images &&
+        mc anonymous set download node2/ibed-images &&
+        echo 'Buckets created successfully'
+      "

@@ -133,7 +133,10 @@ export async function restoreManagedImage(id: number, fetchImpl?: FetchLike): Pr
 	unwrap(result);
 }
 
-export async function permanentDeleteManagedImage(id: number, fetchImpl?: FetchLike): Promise<void> {
+export async function permanentDeleteManagedImage(
+	id: number,
+	fetchImpl?: FetchLike
+): Promise<void> {
 	const result = await permanentDeleteImage({
 		client: configureClient(fetchImpl),
 		path: { id }

@@ -73,6 +73,12 @@ pub struct ImageListItem {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub view_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direct_url: Option<String>,
+    /// Whether the image file is available on at least one active storage node.
+    /// Only populated in admin API responses; null means not checked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub storage_available: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -87,6 +93,12 @@ pub struct ImageListResponse {
 pub struct ImageDetailResponse {
     pub image: ImageModel,
     pub view_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direct_url: Option<String>,
+    /// Whether the image file is available on at least one active storage node.
+    /// Only populated in admin API responses; null means not checked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub storage_available: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -115,4 +127,6 @@ pub struct UploadResponse {
     pub size: i64,
     pub width: i32,
     pub height: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direct_url: Option<String>,
 }

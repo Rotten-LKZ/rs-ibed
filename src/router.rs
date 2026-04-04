@@ -17,6 +17,7 @@ use crate::models::image::{
     ImageCountResponse, ImageDetailResponse, ImageListQuery, ImageListResponse, ImageModel,
     OkResponse, RenameRequest, UploadResponse,
 };
+use crate::models::storage_endpoint::{StorageEndpointResponse, UpdateEndpointRequest};
 use crate::state::AppState;
 
 #[derive(OpenApi)]
@@ -36,6 +37,8 @@ use crate::state::AppState;
         handlers::admin::restore_image,
         handlers::admin::permanent_delete_image,
         handlers::admin::empty_trash,
+        handlers::admin::update_storage_endpoint,
+        handlers::admin::list_storage_endpoints,
     ),
     components(schemas(
         ImageModel,
@@ -51,6 +54,9 @@ use crate::state::AppState;
         CliLoginQuery,
         AuthSuccessResponse,
         AuthCheckResponse,
+        StorageEndpointResponse,
+        UpdateEndpointRequest,
+        crate::config::DirectMode,
     ))
 )]
 struct ApiDoc;
@@ -63,15 +69,20 @@ pub fn build(state: AppState) -> Router {
         HeaderValue::from_static("Accept"),
     );
 
+    let upload_limit = match state.config.storage.max_payload_bytes {
+        Some(bytes) => DefaultBodyLimit::max(bytes as usize),
+        None => DefaultBodyLimit::disable(),
+    };
+
     Router::new()
         // Auth
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/cli", get(handlers::auth::cli_login))
         .route("/api/auth/check", get(handlers::auth::check))
-        // Upload (no body size limit — images can be large)
+        // Upload (configurable body size limit)
         .route(
             "/api/upload",
-            post(handlers::upload::upload).layer(DefaultBodyLimit::disable()),
+            post(handlers::upload::upload).layer(upload_limit),
         )
         // Admin
         .route("/api/admin/images", get(handlers::admin::list_images))
@@ -96,6 +107,15 @@ pub fn build(state: AppState) -> Router {
         .route(
             "/api/admin/images/{id}/permanent-delete",
             post(handlers::admin::permanent_delete_image),
+        )
+        // Storage endpoint admin
+        .route(
+            "/api/admin/storage/endpoints",
+            get(handlers::admin::list_storage_endpoints),
+        )
+        .route(
+            "/api/admin/storage/endpoints/{name}/update",
+            post(handlers::admin::update_storage_endpoint),
         )
         // OpenAPI JSON
         .route("/api/openapi.json", get(openapi_json))

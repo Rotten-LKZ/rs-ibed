@@ -9,7 +9,8 @@
 		{ href: '/dashboard', label: () => t('nav.dashboard'), icon: '▦' },
 		{ href: '/images', label: () => t('nav.images'), icon: '🖼' },
 		{ href: '/upload', label: () => t('nav.upload'), icon: '↑' },
-		{ href: '/trash', label: () => t('nav.trash'), icon: '🗑' }
+		{ href: '/trash', label: () => t('nav.trash'), icon: '🗑' },
+		{ href: '/endpoints', label: () => t('nav.endpoints'), icon: '⬡' }
 	] as const;
 </script>
 

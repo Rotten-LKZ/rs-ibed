@@ -15,26 +15,48 @@ use crate::state::AppState;
 use crate::storage;
 
 const CACHE_SWEEP_INTERVAL_SECS: u64 = 15 * 60;
+const RECONCILE_INTERVAL_SECS: u64 = 6 * 60 * 60;
 
 pub async fn run(config: AppConfig, secrets: Secrets) {
-    tokio::fs::create_dir_all(&config.storage.base_dir)
-        .await
-        .expect("Failed to create storage base_dir");
-    tokio::fs::create_dir_all(&config.storage.cache_dir)
-        .await
-        .expect("Failed to create storage cache_dir");
-
-    tracing::info!(
-        base_dir = %config.storage.base_dir,
-        cache_dir = %config.storage.cache_dir,
-        "storage directories ready"
-    );
+    // Legacy base_dir/cache_dir are optional in newer version; create them only if specified.
+    // Local endpoints define their own `path` in config.
+    if let Some(ref base_dir) = config.storage.base_dir {
+        tokio::fs::create_dir_all(base_dir)
+            .await
+            .expect("Failed to create storage base_dir");
+        tracing::info!(base_dir = %base_dir, "legacy base_dir ready");
+    }
+    if let Some(ref cache_dir) = config.storage.cache_dir {
+        tokio::fs::create_dir_all(cache_dir)
+            .await
+            .expect("Failed to create storage cache_dir");
+        tracing::info!(cache_dir = %cache_dir, "cache_dir ready");
+    }
 
     let repo = db::init_repo(&config, &secrets)
         .await
         .expect("Failed to initialize database");
 
     tracing::info!(driver = %config.database.driver, "database ready");
+
+    let storage_pool = db::init_storage_pool(&config, &secrets)
+        .await
+        .expect("Failed to initialize storage pool");
+
+    let storage_manager = storage::sync_and_build(
+        &config.storage.endpoints,
+        &secrets,
+        storage_pool,
+        config.storage.base_dir.as_deref().unwrap_or("./data/uploads"),
+    )
+    .await
+    .expect("Failed to initialize storage manager");
+    let storage_manager = std::sync::Arc::new(storage_manager);
+
+    tracing::info!(
+        endpoints = config.storage.endpoints.len(),
+        "storage endpoints ready"
+    );
 
     let bind_addr = format!("{}:{}", config.server.host, config.server.port);
     let cli_tokens = Arc::new(CliTokenStore::new());
@@ -62,9 +84,16 @@ pub async fn run(config: AppConfig, secrets: Secrets) {
         secrets: Arc::new(secrets),
         cli_tokens,
         workers,
+        storage_manager,
     };
 
-    spawn_cache_sweeper(Arc::clone(&state.config), Arc::clone(&state.repo));
+    spawn_cache_sweeper(
+        Arc::clone(&state.config),
+        Arc::clone(&state.repo),
+        Arc::clone(&state.storage_manager),
+    );
+
+    spawn_reconciler(Arc::clone(&state.storage_manager));
 
     let app = router::build(state);
 
@@ -77,12 +106,15 @@ pub async fn run(config: AppConfig, secrets: Secrets) {
     axum::serve(listener, app).await.expect("server error");
 }
 
-fn spawn_cache_sweeper(config: Arc<AppConfig>, repo: Arc<dyn ImageRepo>) {
-    let cache_dir = config.storage.cache_dir.clone();
+fn spawn_cache_sweeper(
+    config: Arc<AppConfig>,
+    repo: Arc<dyn ImageRepo>,
+    storage_manager: Arc<crate::storage::StorageManager>,
+) {
+    let cache_dir = config.storage.cache_dir.clone().unwrap_or_else(|| "./data/cache".to_string());
     let dynamic_ttl = config.image.cache_ttl;
     let ttl_map = preset_ttl_map(&config);
     let trash_retention_days = config.server.trash_retention_days;
-    let base_dir = config.storage.base_dir.clone();
 
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(CACHE_SWEEP_INTERVAL_SECS));
@@ -109,9 +141,21 @@ fn spawn_cache_sweeper(config: Arc<AppConfig>, repo: Arc<dyn ImageRepo>) {
                 match repo.find_expired_deleted(cutoff).await {
                     Ok(images) => {
                         for img in &images {
-                            let src = storage::original_path(&base_dir, &img.hash, &img.extension);
-                            let _ = tokio::fs::remove_file(&src).await;
-                            let _ = storage::remove_all_cache_for_hash(&cache_dir, &img.hash).await;
+                            let origin_key =
+                                storage::object_key_original(&img.hash, &img.extension);
+                            for ep in storage_manager.list_active().await {
+                                if let Ok(Some(meta)) =
+                                    ep.backend.head_object(&origin_key).await
+                                {
+                                    if ep.backend.delete_object(&origin_key).await.is_ok() {
+                                        let _ = storage_manager
+                                            .adjust_used_size(&ep.name, -meta.size)
+                                            .await;
+                                    }
+                                }
+                            }
+                            let _ =
+                                storage::remove_all_cache_for_hash(&cache_dir, &img.hash).await;
                         }
                         let count = images.len();
                         if let Err(e) = repo.delete_all_deleted().await {
@@ -125,6 +169,20 @@ fn spawn_cache_sweeper(config: Arc<AppConfig>, repo: Arc<dyn ImageRepo>) {
                     }
                 }
             }
+        }
+    });
+}
+
+fn spawn_reconciler(storage_manager: Arc<crate::storage::StorageManager>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(RECONCILE_INTERVAL_SECS));
+        interval.tick().await; // skip the first immediate tick
+
+        loop {
+            interval.tick().await;
+            tracing::info!("storage reconciliation started");
+            storage_manager.reconcile_used_sizes().await;
+            tracing::info!("storage reconciliation finished");
         }
     });
 }

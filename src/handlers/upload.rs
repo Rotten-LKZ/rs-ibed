@@ -17,6 +17,16 @@ use crate::models::image::{NewImage, UploadResponse};
 use crate::state::AppState;
 use crate::storage;
 
+/// Build full URL for the image view path.
+/// If `public_url` is configured, returns full URL; otherwise returns relative path.
+fn build_full_url(config: &crate::config::AppConfig, year: u16, month: u8, day: u8, hash: &str, ext: &str) -> String {
+    let path = config.server.url_pattern.view_path(year, month, day, hash, ext);
+    match &config.server.public_url {
+        Some(base) => format!("{}{}", base.trim_end_matches('/'), path),
+        None => path,
+    }
+}
+
 #[allow(dead_code)]
 #[derive(ToSchema)]
 pub struct UploadRequest {
@@ -111,13 +121,18 @@ pub async fn upload(
             state.repo.restore(existing.id).await?;
         }
         let created = existing.created_at;
-        let url = state.config.server.url_pattern.view_path(
+        let url = build_full_url(
+            &state.config,
             created.year() as u16,
             created.month() as u8,
             created.day() as u8,
             &existing.hash,
             &existing.extension,
         );
+        let direct_url = state
+            .storage_manager
+            .direct_url_for(&existing.hash, &existing.extension, existing.size)
+            .await;
         return Ok(Json(UploadResponse {
             id: existing.id,
             hash: existing.hash,
@@ -127,6 +142,7 @@ pub async fn upload(
             size: existing.size,
             width: existing.width,
             height: existing.height,
+            direct_url,
         }));
     }
 
@@ -139,17 +155,27 @@ pub async fn upload(
     let width = decoded.width() as i32;
     let height = decoded.height() as i32;
 
-    // 7. Save cleaned file to disk: base_dir/hash[0:2]/hash[2:4]/hash.ext
-    let file_path = storage::original_path(
-        &state.config.storage.base_dir,
-        &hash,
-        &detected.extension,
-    );
+    // 7. Write to origin storage endpoint
+    let file_size = processed_data.len() as i64;
+    let origin_key = storage::object_key_original(&hash, &detected.extension);
 
-    if let Some(parent) = file_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-    tokio::fs::write(&file_path, &processed_data).await?;
+    let (origin_backend, origin_ep_name) = {
+        let router = state.storage_manager.router_read();
+        let ep = router
+            .select_for_write(&hash, file_size)
+            .ok_or_else(|| AppError::Internal("no storage endpoint available for upload".into()))?;
+        (Arc::clone(&ep.backend), ep.name.clone())
+    };
+
+    origin_backend
+        .put_object(&origin_key, processed_data.clone())
+        .await
+        .map_err(|e| AppError::Internal(format!("origin write failed: {e}")))?;
+
+    state
+        .storage_manager
+        .adjust_used_size(&origin_ep_name, file_size)
+        .await?;
 
     // 8. Insert into DB
     let new_img = NewImage {
@@ -166,9 +192,10 @@ pub async fn upload(
 
     let record = state.repo.insert_image(&new_img).await?;
 
-    // 9. Build URL
+    // 9. Build full URL
     let created = record.created_at;
-    let url = state.config.server.url_pattern.view_path(
+    let url = build_full_url(
+        &state.config,
         created.year() as u16,
         created.month() as u8,
         created.day() as u8,
@@ -182,6 +209,12 @@ pub async fn upload(
         spawn_eager_presets(state.clone(), hash.clone(), processed_data);
     }
 
+    // 11. Generate direct URL if applicable
+    let direct_url = state
+        .storage_manager
+        .direct_url_for(&record.hash, &record.extension, record.size)
+        .await;
+
     Ok(Json(UploadResponse {
         id: record.id,
         hash: record.hash,
@@ -191,6 +224,7 @@ pub async fn upload(
         size: record.size,
         width: record.width,
         height: record.height,
+        direct_url,
     }))
 }
 
@@ -213,17 +247,19 @@ fn spawn_eager_presets(state: AppState, hash: String, data: Vec<u8>) {
 
     let config = Arc::clone(&state.config);
     let semaphore = Arc::clone(&state.workers);
+    let storage_manager = Arc::clone(&state.storage_manager);
     let data = Arc::new(data);
 
     for (preset_name, preset) in eager_presets {
         let config = Arc::clone(&config);
         let semaphore = Arc::clone(&semaphore);
+        let storage_manager = Arc::clone(&storage_manager);
         let data = Arc::clone(&data);
         let hash = hash.clone();
 
         tokio::spawn(async move {
             if let Err(e) =
-                generate_preset_cache(&config, &semaphore, &data, &hash, &preset_name, &preset)
+                generate_preset_cache(&config, &semaphore, &storage_manager, &data, &hash, &preset_name, &preset)
                     .await
             {
                 tracing::warn!(
@@ -241,6 +277,7 @@ fn spawn_eager_presets(state: AppState, hash: String, data: Vec<u8>) {
 async fn generate_preset_cache(
     config: &crate::config::AppConfig,
     semaphore: &tokio::sync::Semaphore,
+    storage_manager: &crate::storage::StorageManager,
     data: &[u8],
     hash: &str,
     preset_name: &str,
@@ -251,19 +288,42 @@ async fn generate_preset_cache(
     let output_ext = format_to_ext(effective_format);
 
     let variant_key = storage::preset_variant_key(preset_name);
-    let cache_path = storage::cache_path(&config.storage.cache_dir, &variant_key, hash, output_ext);
+    let cache_key = storage::object_key_cache(&variant_key, hash, output_ext);
 
-    // Skip if already cached
-    if tokio::fs::metadata(&cache_path).await.is_ok() {
+    // Check if already cached (probe HEAD across endpoints)
+    let probes = {
+        let router = storage_manager.router_read();
+        router.probe_for_read(hash)
+    };
+
+    let mut already_cached = false;
+    for ep in &probes {
+        if ep.backend.head_object(&cache_key).await.ok().flatten().is_some() {
+            already_cached = true;
+            break;
+        }
+    }
+
+    if already_cached {
         return Ok(());
     }
 
     let (processed, _mime) = process_image(data, preset, image_cfg, semaphore).await?;
+    let processed_size = processed.len() as i64;
 
-    if let Some(parent) = cache_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
+    let cache_ep = {
+        let router = storage_manager.router_read();
+        router.select_for_write(hash, processed_size)
+            .map(|ep| (Arc::clone(&ep.backend), ep.name.clone()))
+    };
+
+    if let Some((cache_backend, ep_name)) = cache_ep {
+        if cache_backend.put_object(&cache_key, processed).await.is_ok() {
+            let _ = storage_manager.adjust_used_size(&ep_name, processed_size).await;
+        } else {
+            tracing::warn!(preset = %preset_name, hash = %hash, "cache write failed, skipping");
+        }
     }
-    tokio::fs::write(&cache_path, &processed).await?;
 
     Ok(())
 }
