@@ -117,8 +117,12 @@ export default {
 	'trash.info': '已删除的图片可以随时恢复。',
 	'trash.emptyTrash': '清空全部',
 	'trash.emptyTrashConfirm': '将永久删除回收站中的所有图片，此操作不可撤销，是否继续？',
+	'trash.emptyTrashPartial':
+		'部分删除失败，{succeeded} 张成功，{failed} 张失败。失败的图片仍保留在回收站中。',
+	'trash.emptyTrashFailed': '删除失败，存储节点不可访问，请稍后重试。',
 	'trash.permanentDelete': '永久删除',
 	'trash.permanentDeleteConfirm': '确定要永久删除这张图片吗？此操作不可撤销。',
+	'trash.permanentDeleteFailed': '删除失败：存储节点不可访问，文件仍保留在回收站中。',
 
 	'endpoints.title': '存储节点',
 	'endpoints.loading': '正在加载存储节点...',

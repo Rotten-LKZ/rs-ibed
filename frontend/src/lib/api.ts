@@ -16,6 +16,7 @@ import {
 	type ImageCountResponse,
 	type ImageDetailResponse,
 	type ImageListResponse,
+	type TrashEmptyResponse,
 	type UploadRequest,
 	type UploadResponse
 } from '$lib/sdk';
@@ -144,11 +145,11 @@ export async function permanentDeleteManagedImage(
 	unwrap(result);
 }
 
-export async function emptyAllTrash(fetchImpl?: FetchLike): Promise<void> {
+export async function emptyAllTrash(fetchImpl?: FetchLike): Promise<TrashEmptyResponse> {
 	const result = await emptyTrash({
 		client: configureClient(fetchImpl)
 	});
-	unwrap(result);
+	return unwrap(result);
 }
 
 export async function uploadImage(

@@ -130,3 +130,23 @@ pub struct UploadResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub direct_url: Option<String>,
 }
+
+/// Individual result for trash empty operation
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct TrashEmptyItem {
+    pub image_id: i64,
+    pub hash: String,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Response for empty trash endpoint
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct TrashEmptyResponse {
+    pub ok: bool,
+    pub total: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub results: Vec<TrashEmptyItem>,
+}

@@ -65,21 +65,13 @@ pub async fn view(
             return Err(AppError::NotFound);
         }
 
-        let etag = if negotiate {
-            let e = format!("\"{}\"", record.hash);
-            if etag_matches(&headers, &e) {
-                return Ok(not_modified(&e, cfg.server.cache_max_age).into_response());
-            }
-            Some(e)
-        } else {
-            None
-        };
-
         let origin_key = storage::object_key_original(&record.hash, &record.extension);
         let probes = {
             let router = state.storage_manager.router_read();
             router.probe_for_read(&record.hash)
         };
+
+        // Check if file exists on any active endpoint before checking ETag
         let mut raw: Option<Vec<u8>> = None;
         for ep in &probes {
             if let Ok(Some(bytes)) = ep.backend.get_object(&origin_key).await {
@@ -87,6 +79,8 @@ pub async fn view(
                 break;
             }
         }
+
+        // If file doesn't exist on any active node, return error (not 304)
         let raw = match raw {
             Some(r) => r,
             None => {
@@ -96,6 +90,16 @@ pub async fn view(
                     AppError::NotFound
                 });
             }
+        };
+
+        let etag = if negotiate {
+            let e = format!("\"{}\"", record.hash);
+            if etag_matches(&headers, &e) {
+                return Ok(not_modified(&e, cfg.server.cache_max_age).into_response());
+            }
+            Some(e)
+        } else {
+            None
         };
 
         return Ok(build_response(
@@ -120,6 +124,19 @@ pub async fn view(
         format_to_ext(effective_format)
     };
 
+    let cache_key = storage::object_key_cache(
+        &resolved.variant_key,
+        &record.hash,
+        output_ext,
+    );
+
+    // Probe all endpoints for the cached variant (clockwise ring order)
+    let probes = {
+        let router = state.storage_manager.router_read();
+        router.probe_for_read(&record.hash)
+    };
+
+    // Check ETag only after verifying we have a valid cache to serve
     let negotiate = cfg.server.enable_negotiated_cache;
     let etag = if negotiate {
         Some(compute_view_etag(
@@ -134,27 +151,17 @@ pub async fn view(
         None
     };
 
-    if let Some(ref etag) = etag {
-        if etag_matches(&headers, etag) {
-            return Ok(not_modified(etag, cfg.server.cache_max_age));
-        }
-    }
-
-    let cache_key = storage::object_key_cache(
-        &resolved.variant_key,
-        &record.hash,
-        output_ext,
-    );
-
-    // Probe all endpoints for the cached variant (clockwise ring order)
-    let probes = {
-        let router = state.storage_manager.router_read();
-        router.probe_for_read(&record.hash)
-    };
-
+    // Try to serve from cache on any active endpoint
     for ep in &probes {
         match ep.backend.head_object(&cache_key).await {
             Ok(Some(_)) => {
+                // Cache hit - now check ETag
+                if let Some(ref etag) = etag {
+                    if etag_matches(&headers, etag) {
+                        return Ok(not_modified(etag, cfg.server.cache_max_age));
+                    }
+                }
+
                 // If the endpoint supports direct access, redirect instead of proxying
                 if ep.direct_mode != DirectMode::Proxy {
                     let direct_url = match ep.direct_mode {
@@ -284,6 +291,25 @@ pub async fn download(
         .ok_or(AppError::NotFound)?;
 
     let negotiate = cfg.server.enable_negotiated_cache;
+
+    let origin_key = storage::object_key_original(&record.hash, &record.extension);
+    let probes = {
+        let router = state.storage_manager.router_read();
+        router.probe_for_read(&record.hash)
+    };
+
+    // Check if file exists on any active endpoint before checking ETag
+    let mut raw: Option<Vec<u8>> = None;
+    for ep in &probes {
+        if let Ok(Some(bytes)) = ep.backend.get_object(&origin_key).await {
+            raw = Some(bytes);
+            break;
+        }
+    }
+
+    // If file doesn't exist on any active node, return 404 (not 304)
+    let raw = raw.ok_or(AppError::NotFound)?;
+
     let etag = if negotiate {
         let e = format!("\"{}\"", record.hash);
         if etag_matches(&headers, &e) {
@@ -293,20 +319,6 @@ pub async fn download(
     } else {
         None
     };
-
-    let origin_key = storage::object_key_original(&record.hash, &record.extension);
-    let probes = {
-        let router = state.storage_manager.router_read();
-        router.probe_for_read(&record.hash)
-    };
-    let mut raw: Option<Vec<u8>> = None;
-    for ep in &probes {
-        if let Ok(Some(bytes)) = ep.backend.get_object(&origin_key).await {
-            raw = Some(bytes);
-            break;
-        }
-    }
-    let raw = raw.ok_or(AppError::NotFound)?;
 
     let mut builder = Response::builder()
         .header(header::CONTENT_TYPE, record.mime_type.as_str())

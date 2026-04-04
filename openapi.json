@@ -152,11 +152,11 @@
         "operationId": "empty_trash",
         "responses": {
           "200": {
-            "description": "Trash emptied",
+            "description": "Trash emptied (possibly partial)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkResponse"
+                  "$ref": "#/components/schemas/TrashEmptyResponse"
                 }
               }
             }
@@ -307,6 +307,9 @@
           },
           "404": {
             "description": "Not found"
+          },
+          "503": {
+            "description": "Storage unavailable - deletion failed"
           }
         },
         "security": [
@@ -1117,6 +1120,67 @@
           "used_size": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "TrashEmptyItem": {
+        "type": "object",
+        "description": "Individual result for trash empty operation",
+        "required": [
+          "image_id",
+          "hash",
+          "success"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hash": {
+            "type": "string"
+          },
+          "image_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TrashEmptyResponse": {
+        "type": "object",
+        "description": "Response for empty trash endpoint",
+        "required": [
+          "ok",
+          "total",
+          "succeeded",
+          "failed",
+          "results"
+        ],
+        "properties": {
+          "failed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrashEmptyItem"
+            }
+          },
+          "succeeded": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },

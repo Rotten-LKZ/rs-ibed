@@ -145,6 +145,27 @@ export type StorageEndpointResponse = {
 };
 
 /**
+ * Individual result for trash empty operation
+ */
+export type TrashEmptyItem = {
+    error?: string | null;
+    hash: string;
+    image_id: number;
+    success: boolean;
+};
+
+/**
+ * Response for empty trash endpoint
+ */
+export type TrashEmptyResponse = {
+    failed: number;
+    ok: boolean;
+    results: Array<TrashEmptyItem>;
+    succeeded: number;
+    total: number;
+};
+
+/**
  * Only `status` and `description` are mutable via the API.
  * `priority` and `capacity_bytes` are config-immutable.
  */
@@ -264,9 +285,9 @@ export type EmptyTrashErrors = {
 
 export type EmptyTrashResponses = {
     /**
-     * Trash emptied
+     * Trash emptied (possibly partial)
      */
-    200: OkResponse;
+    200: TrashEmptyResponse;
 };
 
 export type EmptyTrashResponse = EmptyTrashResponses[keyof EmptyTrashResponses];
@@ -360,6 +381,10 @@ export type PermanentDeleteImageErrors = {
      * Not found
      */
     404: unknown;
+    /**
+     * Storage unavailable - deletion failed
+     */
+    503: unknown;
 };
 
 export type PermanentDeleteImageResponses = {

@@ -120,8 +120,13 @@ export default {
 	'trash.emptyTrash': 'Empty trash',
 	'trash.emptyTrashConfirm':
 		'This will permanently delete all trashed images. This action cannot be undone. Continue?',
+	'trash.emptyTrashPartial':
+		'Partially failed: {succeeded} succeeded, {failed} failed. Failed images remain in trash.',
+	'trash.emptyTrashFailed': 'Deletion failed: storage node unreachable. Please retry later.',
 	'trash.permanentDelete': 'Delete permanently',
 	'trash.permanentDeleteConfirm': 'Permanently delete this image? This action cannot be undone.',
+	'trash.permanentDeleteFailed':
+		'Deletion failed: storage node unreachable. File remains in trash.',
 
 	'endpoints.title': 'Storage Endpoints',
 	'endpoints.loading': 'Loading endpoints...',

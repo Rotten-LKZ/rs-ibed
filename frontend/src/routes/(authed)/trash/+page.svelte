@@ -64,8 +64,18 @@
 		try {
 			await permanentDeleteManagedImage(item.id);
 			await loadTrash();
-		} catch {
-			error = t('home.actionError');
+		} catch (e: unknown) {
+			// 503 Service Unavailable = storage node unreachable
+			const msg = e instanceof Error ? e.message : String(e);
+			if (
+				msg.includes('503') ||
+				msg.toLowerCase().includes('storage') ||
+				msg.toLowerCase().includes('unavailable')
+			) {
+				error = t('trash.permanentDeleteFailed');
+			} else {
+				error = t('home.actionError');
+			}
 		} finally {
 			busyId = null;
 		}
@@ -75,10 +85,26 @@
 		if (!confirm(t('trash.emptyTrashConfirm'))) return;
 		busyGlobal = true;
 		try {
-			await emptyAllTrash();
+			const result = await emptyAllTrash();
+			if (!result.ok && result.failed > 0) {
+				// Partial failure - some succeeded, some failed
+				error = t('trash.emptyTrashPartial')
+					.replace('{succeeded}', String(result.succeeded))
+					.replace('{failed}', String(result.failed));
+			}
 			await loadTrash();
-		} catch {
-			error = t('home.actionError');
+		} catch (e: unknown) {
+			// 503 Service Unavailable = storage node unreachable
+			const msg = e instanceof Error ? e.message : String(e);
+			if (
+				msg.includes('503') ||
+				msg.toLowerCase().includes('storage') ||
+				msg.toLowerCase().includes('unavailable')
+			) {
+				error = t('trash.emptyTrashFailed');
+			} else {
+				error = t('home.actionError');
+			}
 		} finally {
 			busyGlobal = false;
 		}

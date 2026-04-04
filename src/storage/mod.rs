@@ -227,7 +227,7 @@ impl StoragePool {
         Ok(())
     }
 
-    async fn load_active_endpoints(
+    async fn load_all_endpoints(
         &self,
     ) -> AppResult<Vec<crate::models::storage_endpoint::StorageEndpointModel>> {
         use crate::models::storage_endpoint::StorageEndpointModel;
@@ -236,7 +236,7 @@ impl StoragePool {
                 let rows = sqlx::query_as::<_, StorageEndpointModel>(
                     "SELECT name, capacity_bytes, used_size, \
                      priority, status \
-                     FROM storage_endpoints WHERE status = 'active' ORDER BY priority ASC, name ASC",
+                     FROM storage_endpoints ORDER BY priority ASC, name ASC",
                 )
                 .fetch_all(pool)
                 .await
@@ -247,7 +247,7 @@ impl StoragePool {
                 let rows = sqlx::query_as::<_, StorageEndpointModel>(
                     "SELECT name, capacity_bytes, used_size, \
                      priority, status \
-                     FROM storage_endpoints WHERE status = 'active' ORDER BY priority ASC, name ASC",
+                     FROM storage_endpoints ORDER BY priority ASC, name ASC",
                 )
                 .fetch_all(pool)
                 .await
@@ -398,10 +398,8 @@ impl StorageRouter {
     fn build(endpoints: &HashMap<String, Arc<EndpointEntry>>) -> Self {
         let mut rings: BTreeMap<i32, BTreeMap<u32, String>> = BTreeMap::new();
 
+        // Build ring with ALL endpoints (including disabled) to preserve hash positions
         for (name, entry) in endpoints {
-            if entry.status != "active" {
-                continue;
-            }
             let ring = rings.entry(entry.priority).or_default();
             let node_count = (entry.capacity_bytes / 1_073_741_824).max(1) * 100;
             for i in 0..node_count {
@@ -454,6 +452,22 @@ impl StorageRouter {
 
             if candidate.is_some() {
                 return candidate;
+            }
+        }
+        None
+    }
+
+    /// Return the preferred (primary) endpoint for the given hash.
+    /// This is the first node encountered in the ring, regardless of status.
+    /// Used to determine if the primary node is disabled before safe deletion.
+    pub fn primary_for(&self, content_hash: &str) -> Option<Arc<EndpointEntry>> {
+        let pos = Self::position_for(content_hash);
+
+        for (_priority, ring) in &self.rings {
+            if let Some((_, name)) = ring.range(pos..).chain(ring.iter()).next() {
+                if let Some(ep) = self.endpoints.get(name) {
+                    return Some(Arc::clone(ep));
+                }
             }
         }
         None
@@ -608,7 +622,8 @@ impl StorageManager {
     }
 
     /// Generate a direct URL for the original image at the given hash.
-    /// Returns None if the endpoint's direct_mode is Proxy or if the endpoint is Local.
+    /// Returns None if no active endpoint actually contains the file,
+    /// or if the endpoint's direct_mode is Proxy.
     pub async fn direct_url_for(
         &self,
         hash: &str,
@@ -622,27 +637,41 @@ impl StorageManager {
     async fn direct_url_for_key(
         &self,
         hash: &str,
-        file_size: i64,
+        _file_size: i64,
         key: &str,
     ) -> Option<String> {
-        let (ep, mode) = {
+        // Find the first active endpoint that actually has this file
+        let probes = {
             let router = self.router.read().expect("storage router lock poisoned");
-            let ep = router.select_for_write(hash, file_size)?;
-            (Arc::clone(&ep), ep.direct_mode.clone())
+            router.probe_for_read(hash)
         };
 
-        match mode {
-            DirectMode::Proxy => None,
-            DirectMode::Presigned => {
-                let ttl = ep.direct_url_ttl.unwrap_or(3600);
-                ep.backend
-                    .presigned_get_url(key, std::time::Duration::from_secs(ttl))
-                    .await
-                    .ok()
-                    .flatten()
+        for ep in &probes {
+            // Verify the file actually exists on this endpoint
+            match ep.backend.head_object(key).await {
+                Ok(Some(_)) => {
+                    // File exists, check if we can generate a direct URL
+                    match ep.direct_mode {
+                        DirectMode::Proxy => continue, // Try next endpoint
+                        DirectMode::Presigned => {
+                            let ttl = ep.direct_url_ttl.unwrap_or(3600);
+                            return ep.backend
+                                .presigned_get_url(key, std::time::Duration::from_secs(ttl))
+                                .await
+                                .ok()
+                                .flatten();
+                        }
+                        DirectMode::Public => {
+                            return ep.backend.public_url(key);
+                        }
+                    }
+                }
+                _ => continue, // File not on this endpoint, try next
             }
-            DirectMode::Public => ep.backend.public_url(key),
         }
+
+        // No active endpoint has this file
+        None
     }
 }
 
@@ -665,110 +694,124 @@ pub async fn sync_and_build(
     let active_names: Vec<String> = config_endpoints.iter().map(|e| e.name.clone()).collect();
     pool.disable_missing_endpoints(&active_names).await?;
 
-    // Load all active endpoints from DB
-    let db_rows = pool.load_active_endpoints().await?;
+    // Load ALL endpoints from DB (including disabled ones for admin visibility)
+    let db_rows = pool.load_all_endpoints().await?;
 
     // Build endpoint entries with backends
     let mut entries: HashMap<String, Arc<EndpointEntry>> = HashMap::new();
     for row in &db_rows {
         // Find the config entry to determine type and path
-        let cfg_ep = config_endpoints
-            .iter()
-            .find(|e| e.name == row.name)
-            .ok_or_else(|| {
-                AppError::Internal(format!(
-                    "active endpoint '{}' not found in config — this is a bug",
-                    row.name
-                ))
-            })?;
+        // Disabled endpoints may not be in config (if removed from config)
+        // In that case, we still want to list them but cannot create a functional backend
+        let cfg_ep = config_endpoints.iter().find(|e| e.name == row.name);
 
-        let backend: Arc<dyn StorageBackend> = match cfg_ep.endpoint_type {
-            EndpointType::Local => {
-                let path = cfg_ep.path.as_deref().unwrap_or(local_base_dir);
-                Arc::new(LocalBackend::new(path))
-            }
-            EndpointType::S3 => {
-                let ep_secrets = secrets.endpoints.get(&row.name).ok_or_else(|| {
-                    AppError::Internal(format!(
-                        "no credentials found for S3 endpoint '{}'",
-                        row.name
-                    ))
-                })?;
+        let (backend, endpoint_type_str, direct_mode, direct_url_ttl) = match cfg_ep {
+            Some(cfg) => {
+                let backend: Arc<dyn StorageBackend> = match cfg.endpoint_type {
+                    EndpointType::Local => {
+                        let path = cfg.path.as_deref().unwrap_or(local_base_dir);
+                        Arc::new(LocalBackend::new(path))
+                    }
+                    EndpointType::S3 => {
+                        let ep_secrets = secrets.endpoints.get(&row.name).ok_or_else(|| {
+                            AppError::Internal(format!(
+                                "no credentials found for S3 endpoint '{}'",
+                                row.name
+                            ))
+                        })?;
 
-                let access_key = ep_secrets.access_key.clone().ok_or_else(|| {
-                    AppError::Internal(format!("missing access_key for endpoint '{}'", row.name))
-                })?;
-                let secret_key = ep_secrets.secret_key.clone().ok_or_else(|| {
-                    AppError::Internal(format!("missing secret_key for endpoint '{}'", row.name))
-                })?;
+                        let access_key = ep_secrets.access_key.clone().ok_or_else(|| {
+                            AppError::Internal(format!("missing access_key for endpoint '{}'", row.name))
+                        })?;
+                        let secret_key = ep_secrets.secret_key.clone().ok_or_else(|| {
+                            AppError::Internal(format!("missing secret_key for endpoint '{}'", row.name))
+                        })?;
 
-                // Bucket name: prefer env var, fall back to config field
-                let bucket = ep_secrets
-                    .bucket
-                    .clone()
-                    .or_else(|| cfg_ep.bucket.clone())
-                    .ok_or_else(|| {
-                        AppError::Internal(format!("missing bucket for endpoint '{}'", row.name))
-                    })?;
+                        // Bucket name: prefer env var, fall back to config field
+                        let bucket = ep_secrets
+                            .bucket
+                            .clone()
+                            .or_else(|| cfg.bucket.clone())
+                            .ok_or_else(|| {
+                                AppError::Internal(format!("missing bucket for endpoint '{}'", row.name))
+                            })?;
 
-                let region = ep_secrets
-                    .region
-                    .clone()
-                    .or_else(|| cfg_ep.region.clone())
-                    .unwrap_or_else(|| "us-east-1".to_string());
+                        let region = ep_secrets
+                            .region
+                            .clone()
+                            .or_else(|| cfg.region.clone())
+                            .unwrap_or_else(|| "us-east-1".to_string());
 
-                let mut builder = aws_config::defaults(BehaviorVersion::latest())
-                    .region(Region::new(region))
-                    .credentials_provider(Credentials::new(
-                        access_key,
-                        secret_key,
-                        None,
-                        None,
-                        "static",
-                    ));
+                        let mut builder = aws_config::defaults(BehaviorVersion::latest())
+                            .region(Region::new(region))
+                            .credentials_provider(Credentials::new(
+                                access_key,
+                                secret_key,
+                                None,
+                                None,
+                                "static",
+                            ));
 
-                if let Some(url) = &ep_secrets.endpoint_url {
-                    builder = builder.endpoint_url(url);
+                        if let Some(url) = &ep_secrets.endpoint_url {
+                            builder = builder.endpoint_url(url);
+                        }
+
+                        let sdk_config = builder.load().await;
+
+                        // env overrides config; default to false (virtual-hosted style)
+                        let force_path_style = ep_secrets
+                            .force_path_style
+                            .or(cfg.force_path_style)
+                            .unwrap_or(false);
+
+                        let s3_config = aws_sdk_s3::config::Builder::from(&sdk_config)
+                            .force_path_style(force_path_style)
+                            .build();
+                        let client = aws_sdk_s3::Client::from_conf(s3_config);
+
+                        // Build presign client with public endpoint override if configured
+                        let presign_client = cfg.direct_url_public_endpoint.as_ref().map(|public_url| {
+                            let presign_s3_config = aws_sdk_s3::config::Builder::from(&sdk_config)
+                                .endpoint_url(public_url)
+                                .force_path_style(force_path_style)
+                                .build();
+                            aws_sdk_s3::Client::from_conf(presign_s3_config)
+                        });
+
+                        // Determine the endpoint URL to use for public URL construction
+                        let effective_endpoint_url = cfg
+                            .direct_url_public_endpoint
+                            .as_deref()
+                            .or(ep_secrets.endpoint_url.as_deref())
+                            .map(|s| s.to_string());
+
+                        Arc::new(S3Backend::new(client, bucket, presign_client, effective_endpoint_url))
+                    }
+                };
+
+                let endpoint_type_str = match cfg.endpoint_type {
+                    EndpointType::Local => "Local",
+                    EndpointType::S3 => "S3",
                 }
+                .to_string();
 
-                let sdk_config = builder.load().await;
-
-                // env overrides config; default to false (virtual-hosted style)
-                let force_path_style = ep_secrets
-                    .force_path_style
-                    .or(cfg_ep.force_path_style)
-                    .unwrap_or(false);
-
-                let s3_config = aws_sdk_s3::config::Builder::from(&sdk_config)
-                    .force_path_style(force_path_style)
-                    .build();
-                let client = aws_sdk_s3::Client::from_conf(s3_config);
-
-                // Build presign client with public endpoint override if configured
-                let presign_client = cfg_ep.direct_url_public_endpoint.as_ref().map(|public_url| {
-                    let presign_s3_config = aws_sdk_s3::config::Builder::from(&sdk_config)
-                        .endpoint_url(public_url)
-                        .force_path_style(force_path_style)
-                        .build();
-                    aws_sdk_s3::Client::from_conf(presign_s3_config)
-                });
-
-                // Determine the endpoint URL to use for public URL construction
-                let effective_endpoint_url = cfg_ep
-                    .direct_url_public_endpoint
-                    .as_deref()
-                    .or(ep_secrets.endpoint_url.as_deref())
-                    .map(|s| s.to_string());
-
-                Arc::new(S3Backend::new(client, bucket, presign_client, effective_endpoint_url))
+                (backend, endpoint_type_str, cfg.direct_mode.clone(), cfg.direct_url_ttl)
+            }
+            None => {
+                // Endpoint exists in DB but not in config (likely disabled and removed from config)
+                // Create a placeholder entry that can be listed but cannot be used for I/O
+                tracing::warn!(
+                    endpoint = %row.name,
+                    status = %row.status,
+                    "Endpoint not found in config, creating placeholder entry"
+                );
+                // Use a dummy backend - it will never be called because status is not "active"
+                // We use LocalBackend with a placeholder path
+                let backend: Arc<dyn StorageBackend> = Arc::new(LocalBackend::new("/dev/null"));
+                let endpoint_type_str = "Unknown".to_string();
+                (backend, endpoint_type_str, DirectMode::Proxy, None)
             }
         };
-
-        let endpoint_type_str = match cfg_ep.endpoint_type {
-            EndpointType::Local => "Local",
-            EndpointType::S3 => "S3",
-        }
-        .to_string();
 
         let entry = Arc::new(EndpointEntry {
             name: row.name.clone(),
@@ -778,8 +821,8 @@ pub async fn sync_and_build(
             status: row.status.clone(),
             used_size: Arc::new(AtomicI64::new(row.used_size)),
             backend,
-            direct_mode: cfg_ep.direct_mode.clone(),
-            direct_url_ttl: cfg_ep.direct_url_ttl,
+            direct_mode,
+            direct_url_ttl,
         });
         entries.insert(row.name.clone(), entry);
     }

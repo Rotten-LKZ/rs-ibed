@@ -86,6 +86,8 @@ export type {
 	RestoreImageResponse,
 	RestoreImageResponses,
 	StorageEndpointResponse,
+	TrashEmptyItem,
+	TrashEmptyResponse,
 	UpdateEndpointRequest,
 	UpdateStorageEndpointData,
 	UpdateStorageEndpointErrors,

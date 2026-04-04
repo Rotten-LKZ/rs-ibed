@@ -6,7 +6,7 @@ use crate::auth::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::models::image::{
     ImageCountResponse, ImageDetailResponse, ImageListItem, ImageListQuery, ImageListResponse,
-    OkResponse, RenameRequest,
+    OkResponse, RenameRequest, TrashEmptyItem, TrashEmptyResponse,
 };
 use crate::models::storage_endpoint::{StorageEndpointResponse, UpdateEndpointRequest};
 use crate::state::AppState;
@@ -245,6 +245,7 @@ pub async fn restore_image(
         (status = 200, description = "Permanently deleted", body = OkResponse),
         (status = 400, description = "Image not in trash"),
         (status = 404, description = "Not found"),
+        (status = 503, description = "Storage unavailable - deletion failed"),
         (status = 401, description = "Unauthorized"),
     ),
     security(("cookieAuth" = []), ("bearerAuth" = []))
@@ -263,15 +264,80 @@ pub async fn permanent_delete_image(
     }
 
     let origin_key = storage::object_key_original(&record.hash, &record.extension);
-    for ep in state.storage_manager.list_active().await {
-        if let Ok(Some(meta)) = ep.backend.head_object(&origin_key).await {
-            if ep.backend.delete_object(&origin_key).await.is_ok() {
-                let _ = state.storage_manager.adjust_used_size(&ep.name, -meta.size).await;
+
+    // Check if the primary node (based on hash ring) is disabled
+    // If so, we cannot confirm whether the file exists on that node → block deletion
+    {
+        let router = state.storage_manager.router_read();
+        if let Some(primary) = router.primary_for(&record.hash) {
+            if primary.status != "active" {
+                tracing::warn!(
+                    endpoint = %primary.name,
+                    status = %primary.status,
+                    hash = %record.hash,
+                    "Primary storage node is disabled - cannot safely delete"
+                );
+                return Err(AppError::StorageUnavailable);
             }
         }
     }
 
-    let _ = storage::remove_all_cache_for_hash(state.config.storage.cache_dir.as_deref().unwrap_or(""), &record.hash).await;
+    // Only check ACTIVE endpoints - disabled endpoints are treated as offline
+    let mut deletions_required = Vec::new();
+    for ep in state.storage_manager.list_active().await {
+        match ep.backend.head_object(&origin_key).await {
+            Ok(Some(meta)) => {
+                deletions_required.push((ep.name.clone(), meta.size));
+            }
+            Ok(None) => {
+                // File not on this endpoint, no action needed
+            }
+            Err(e) => {
+                // Active endpoint is unreachable - cannot safely delete
+                tracing::error!(
+                    endpoint = %ep.name,
+                    hash = %record.hash,
+                    error = %e,
+                    "Active storage endpoint unreachable - cannot verify file existence"
+                );
+                return Err(AppError::StorageUnavailable);
+            }
+        }
+    }
+
+    // Attempt to delete from all active endpoints that have the file
+    let mut failed_endpoints = Vec::new();
+    for (ep_name, size) in deletions_required {
+        let ep = state.storage_manager.get_endpoint(&ep_name).await
+            .ok_or_else(|| AppError::Internal(format!("Endpoint {} disappeared", ep_name)))?;
+
+        match ep.backend.delete_object(&origin_key).await {
+            Ok(_) => {
+                // Update used_size tracking
+                let _ = state.storage_manager.adjust_used_size(&ep_name, -size).await;
+            }
+            Err(e) => {
+                tracing::error!(
+                    endpoint = %ep_name,
+                    hash = %record.hash,
+                    error = %e,
+                    "Failed to delete object from storage"
+                );
+                failed_endpoints.push(ep_name);
+            }
+        }
+    }
+
+    // If any deletions failed, DO NOT delete the database record
+    if !failed_endpoints.is_empty() {
+        return Err(AppError::StorageUnavailable);
+    }
+
+    // All storage deletions successful - now delete from database
+    let _ = storage::remove_all_cache_for_hash(
+        state.config.storage.cache_dir.as_deref().unwrap_or(""),
+        &record.hash,
+    ).await;
 
     state.repo.hard_delete(id).await?;
 
@@ -283,7 +349,7 @@ pub async fn permanent_delete_image(
     post,
     path = "/api/admin/images/trash/empty",
     responses(
-        (status = 200, description = "Trash emptied", body = OkResponse),
+        (status = 200, description = "Trash emptied (possibly partial)", body = TrashEmptyResponse),
         (status = 401, description = "Unauthorized"),
     ),
     security(("cookieAuth" = []), ("bearerAuth" = []))
@@ -291,24 +357,135 @@ pub async fn permanent_delete_image(
 pub async fn empty_trash(
     _auth: AuthUser,
     State(state): State<AppState>,
-) -> AppResult<Json<OkResponse>> {
+) -> AppResult<Json<TrashEmptyResponse>> {
     let images = state.repo.find_all_deleted().await?;
+
+    let mut results: Vec<TrashEmptyItem> = Vec::new();
 
     for img in &images {
         let origin_key = storage::object_key_original(&img.hash, &img.extension);
-        for ep in state.storage_manager.list_active().await {
-            if let Ok(Some(meta)) = ep.backend.head_object(&origin_key).await {
-                if ep.backend.delete_object(&origin_key).await.is_ok() {
-                    let _ = state.storage_manager.adjust_used_size(&ep.name, -meta.size).await;
+
+        // Check if the primary node (based on hash ring) is disabled
+        // If so, we cannot confirm whether the file exists on that node → skip this image
+        {
+            let router = state.storage_manager.router_read();
+            if let Some(primary) = router.primary_for(&img.hash) {
+                if primary.status != "active" {
+                    tracing::warn!(
+                        endpoint = %primary.name,
+                        status = %primary.status,
+                        hash = %img.hash,
+                        "Primary storage node is disabled - cannot safely delete"
+                    );
+                    results.push(TrashEmptyItem {
+                        image_id: img.id,
+                        hash: img.hash.clone(),
+                        success: false,
+                        error: Some("Primary storage node is disabled - cannot safely delete".to_string()),
+                    });
+                    continue;
                 }
             }
         }
-        let _ = storage::remove_all_cache_for_hash(state.config.storage.cache_dir.as_deref().unwrap_or(""), &img.hash).await;
+
+        // Only check ACTIVE endpoints - disabled endpoints are treated as offline
+        let mut deletions_required = Vec::new();
+        let mut check_failed = false;
+
+        for ep in state.storage_manager.list_active().await {
+            match ep.backend.head_object(&origin_key).await {
+                Ok(Some(meta)) => {
+                    deletions_required.push((ep.name.clone(), meta.size));
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    // Active endpoint is unreachable - cannot safely delete
+                    tracing::error!(
+                        endpoint = %ep.name,
+                        hash = %img.hash,
+                        error = %e,
+                        "Active storage endpoint unreachable - cannot verify file existence"
+                    );
+                    check_failed = true;
+                    break;
+                }
+            }
+        }
+
+        if check_failed {
+            results.push(TrashEmptyItem {
+                image_id: img.id,
+                hash: img.hash.clone(),
+                success: false,
+                error: Some("Active storage endpoint unavailable - cannot delete safely".to_string()),
+            });
+            continue;
+        }
+
+        // Attempt to delete from all active endpoints
+        let mut failed_endpoints = Vec::new();
+        for (ep_name, size) in deletions_required {
+            if let Some(ep) = state.storage_manager.get_endpoint(&ep_name).await {
+                match ep.backend.delete_object(&origin_key).await {
+                    Ok(_) => {
+                        let _ = state.storage_manager.adjust_used_size(&ep_name, -size).await;
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            endpoint = %ep_name,
+                            hash = %img.hash,
+                            error = %e,
+                            "Failed to delete object from storage"
+                        );
+                        failed_endpoints.push(ep_name);
+                    }
+                }
+            }
+        }
+
+        if !failed_endpoints.is_empty() {
+            results.push(TrashEmptyItem {
+                image_id: img.id,
+                hash: img.hash.clone(),
+                success: false,
+                error: Some(format!("Failed to delete from endpoints: {:?}", failed_endpoints)),
+            });
+            continue;
+        }
+
+        // All storage deletions successful - delete from database and cache
+        let _ = storage::remove_all_cache_for_hash(
+            state.config.storage.cache_dir.as_deref().unwrap_or(""),
+            &img.hash,
+        ).await;
+
+        if let Err(e) = state.repo.hard_delete(img.id).await {
+            results.push(TrashEmptyItem {
+                image_id: img.id,
+                hash: img.hash.clone(),
+                success: false,
+                error: Some(format!("Database error: {}", e)),
+            });
+        } else {
+            results.push(TrashEmptyItem {
+                image_id: img.id,
+                hash: img.hash.clone(),
+                success: true,
+                error: None,
+            });
+        }
     }
 
-    state.repo.delete_all_deleted().await?;
+    let succeeded = results.iter().filter(|r| r.success).count();
+    let failed = results.len() - succeeded;
 
-    Ok(Json(OkResponse { ok: true }))
+    Ok(Json(TrashEmptyResponse {
+        ok: failed == 0,
+        total: results.len(),
+        succeeded,
+        failed,
+        results,
+    }))
 }
 
 /// GET /api/admin/storage/endpoints
