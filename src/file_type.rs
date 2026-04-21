@@ -12,6 +12,8 @@ const SUPPORTED: &[(&str, &str)] = &[
     ("tiff", "image/tiff"),
     ("ico", "image/x-icon"),
     ("svg", "image/svg+xml"),
+    ("heif", "image/heif"),
+    ("heic", "image/heic"),
 ];
 
 pub struct DetectedType {
@@ -65,6 +67,8 @@ fn canonical_ext(mime: &str) -> &str {
         "image/tiff" => "tiff",
         "image/x-icon" => "ico",
         "image/svg+xml" => "svg",
+        "image/heif" => "heif",
+        "image/heic" => "heic",
         _ => "bin",
     }
 }

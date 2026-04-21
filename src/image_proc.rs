@@ -2,7 +2,8 @@ use std::io::Cursor;
 
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
-use image::{DynamicImage, ImageEncoder, ImageFormat as ImgFmt, imageops::FilterType};
+use image::{DynamicImage, ImageEncoder, imageops::FilterType};
+use rgb::FromSlice;
 use tokio::sync::Semaphore;
 
 use crate::config::{FitMode, ImageConfig, ImageFormat, PresetConfig};
@@ -30,6 +31,62 @@ pub fn format_to_mime(format: ImageFormat) -> &'static str {
     }
 }
 
+/// Decode image bytes into a `DynamicImage`.
+///
+/// For HEIF/HEIC files, uses libheif for decoding.
+/// For all other formats, delegates to the `image` crate.
+pub fn decode_image(data: &[u8], ext: &str) -> AppResult<DynamicImage> {
+    if ext == "heif" || ext == "heic" {
+        decode_heif(data)
+    } else {
+        image::load_from_memory(data).map_err(AppError::Image)
+    }
+}
+
+/// Decode a HEIF/HEIC image to `DynamicImage` using libheif.
+fn decode_heif(data: &[u8]) -> AppResult<DynamicImage> {
+    use libheif_rs::{ColorSpace, HeifContext, LibHeif, RgbChroma};
+
+    let ctx = HeifContext::read_from_bytes(data)
+        .map_err(|e| AppError::BadRequest(format!("failed to read HEIF: {e}")))?;
+
+    let handle = ctx
+        .primary_image_handle()
+        .map_err(|e| AppError::BadRequest(format!("failed to get HEIF image handle: {e}")))?;
+
+    let lib_heif = LibHeif::new();
+    let image = lib_heif
+        .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgba), None)
+        .map_err(|e| AppError::BadRequest(format!("failed to decode HEIF: {e}")))?;
+
+    let plane = image
+        .planes()
+        .interleaved
+        .ok_or_else(|| AppError::BadRequest("HEIF image has no interleaved plane".into()))?;
+
+    let width = handle.width();
+    let height = handle.height();
+    let stride = plane.stride;
+    let src = plane.data;
+
+    // If stride matches width*4, use data directly; otherwise copy row by row.
+    let rgba_data = if stride == width as usize * 4 {
+        src.to_vec()
+    } else {
+        let mut buf = Vec::with_capacity(width as usize * height as usize * 4);
+        for row in 0..height as usize {
+            let start = row * stride;
+            let end = start + width as usize * 4;
+            buf.extend_from_slice(&src[start..end]);
+        }
+        buf
+    };
+
+    image::RgbaImage::from_raw(width, height, rgba_data)
+        .map(DynamicImage::ImageRgba8)
+        .ok_or_else(|| AppError::Internal("failed to construct image from HEIF pixels".into()))
+}
+
 /// Process image bytes according to a preset and global config.
 ///
 /// Acquires a semaphore permit first so that at most `max_workers`
@@ -40,6 +97,7 @@ pub fn format_to_mime(format: ImageFormat) -> &'static str {
 /// Returns `(output_bytes, mime_type)`.
 pub async fn process_image(
     data: &[u8],
+    ext: &str,
     preset: &PresetConfig,
     global: &ImageConfig,
     semaphore: &Semaphore,
@@ -52,6 +110,7 @@ pub async fn process_image(
         .map_err(|_| AppError::Internal("worker pool closed".into()))?;
 
     let data = data.to_vec();
+    let ext = ext.to_string();
     let preset_width = preset.width;
     let preset_height = preset.height;
     let fit = preset.effective_fit();
@@ -61,7 +120,7 @@ pub async fn process_image(
     // Move the heavy decode/resize/encode work off the async runtime
     // onto a dedicated blocking thread.
     tokio::task::spawn_blocking(move || {
-        let img = image::load_from_memory(&data).map_err(AppError::Image)?;
+        let img = decode_image(&data, &ext)?;
         let img = resize_image(img, preset_width, preset_height, fit);
         encode_image(img, format, quality)
     })
@@ -131,23 +190,49 @@ fn encode_image(
                 .map_err(AppError::Image)?;
             buf
         }
-        ImageFormat::Webp => {
-            let mut buf = Cursor::new(Vec::new());
-            img.write_to(&mut buf, ImgFmt::WebP)?;
-            buf.into_inner()
-        }
-        ImageFormat::Avif => {
-            let mut buf = Cursor::new(Vec::new());
-            img.write_to(&mut buf, ImgFmt::Avif)?;
-            buf.into_inner()
-        }
+        ImageFormat::Webp => encode_webp(&img, quality)?,
+        ImageFormat::Avif => encode_avif(&img, quality)?,
         ImageFormat::Original => {
             // No re-encoding; encode as PNG as a safe fallback.
             let mut buf = Cursor::new(Vec::new());
-            img.write_to(&mut buf, ImgFmt::Png)?;
+            img.write_to(&mut buf, image::ImageFormat::Png)?;
             buf.into_inner()
         }
     };
 
     Ok((bytes, mime))
+}
+
+/// Encode to WebP using libwebp (C library) with quality control.
+fn encode_webp(img: &DynamicImage, quality: u8) -> AppResult<Vec<u8>> {
+    let rgba = img.to_rgba8();
+    let width = rgba.width();
+    let height = rgba.height();
+
+    let encoder = webp::Encoder::from_rgba(rgba.as_raw(), width, height);
+    let mem = encoder.encode(quality as f32);
+
+    if mem.is_empty() {
+        return Err(AppError::Internal("WebP encoding failed".into()));
+    }
+
+    Ok(mem.to_vec())
+}
+
+/// Encode to AVIF using ravif with quality and speed control.
+fn encode_avif(img: &DynamicImage, quality: u8) -> AppResult<Vec<u8>> {
+    let rgba = img.to_rgba8();
+    let width = rgba.width() as usize;
+    let height = rgba.height() as usize;
+
+    let pixels = rgba.as_raw().as_rgba();
+    let img_ref = imgref::Img::new(pixels, width, height);
+
+    let result = ravif::Encoder::new()
+        .with_quality(quality as f32)
+        .with_speed(6) // balanced speed/quality
+        .encode_rgba(img_ref)
+        .map_err(|e| AppError::Internal(format!("AVIF encoding failed: {e}")))?;
+
+    Ok(result.avif_file)
 }

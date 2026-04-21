@@ -1,4 +1,3 @@
-use std::io::Cursor;
 use std::sync::Arc;
 
 use axum::extract::{Multipart, State};
@@ -12,7 +11,7 @@ use crate::config::{MetadataField, PresetConfig};
 use crate::error::{AppError, AppResult};
 use crate::exif;
 use crate::file_type::detect_image_type;
-use crate::image_proc::{format_to_ext, process_image};
+use crate::image_proc::{decode_image, format_to_ext, process_image};
 use crate::models::image::{NewImage, UploadResponse};
 use crate::state::AppState;
 use crate::storage;
@@ -131,11 +130,7 @@ pub async fn upload(
     }
 
     // 6. Decode image to get dimensions
-    let reader = image::ImageReader::new(Cursor::new(&processed_data))
-        .with_guessed_format()
-        .map_err(|e| AppError::BadRequest(format!("cannot detect image format: {e}")))?;
-
-    let decoded = reader.decode()?;
+    let decoded = decode_image(&processed_data, &detected.extension)?;
     let width = decoded.width() as i32;
     let height = decoded.height() as i32;
 
@@ -179,7 +174,7 @@ pub async fn upload(
     // 10. Spawn background tasks for eager presets (non-blocking).
     // Only if image processing is enabled.
     if state.config.image.enable {
-        spawn_eager_presets(state.clone(), hash.clone(), processed_data);
+        spawn_eager_presets(state.clone(), hash.clone(), detected.extension.clone(), processed_data);
     }
 
     Ok(Json(UploadResponse {
@@ -196,7 +191,7 @@ pub async fn upload(
 
 /// Spawn background tokio tasks for each preset with `eager = true`.
 /// These run after the upload response is already sent.
-fn spawn_eager_presets(state: AppState, hash: String, data: Vec<u8>) {
+fn spawn_eager_presets(state: AppState, hash: String, ext: String, data: Vec<u8>) {
     let image_cfg = &state.config.image;
 
     // Collect eager presets
@@ -220,10 +215,11 @@ fn spawn_eager_presets(state: AppState, hash: String, data: Vec<u8>) {
         let semaphore = Arc::clone(&semaphore);
         let data = Arc::clone(&data);
         let hash = hash.clone();
+        let ext = ext.clone();
 
         tokio::spawn(async move {
             if let Err(e) =
-                generate_preset_cache(&config, &semaphore, &data, &hash, &preset_name, &preset)
+                generate_preset_cache(&config, &semaphore, &data, &hash, &ext, &preset_name, &preset)
                     .await
             {
                 tracing::warn!(
@@ -243,6 +239,7 @@ async fn generate_preset_cache(
     semaphore: &tokio::sync::Semaphore,
     data: &[u8],
     hash: &str,
+    ext: &str,
     preset_name: &str,
     preset: &PresetConfig,
 ) -> AppResult<()> {
@@ -258,7 +255,7 @@ async fn generate_preset_cache(
         return Ok(());
     }
 
-    let (processed, _mime) = process_image(data, preset, image_cfg, semaphore).await?;
+    let (processed, _mime) = process_image(data, ext, preset, image_cfg, semaphore).await?;
 
     if let Some(parent) = cache_path.parent() {
         tokio::fs::create_dir_all(parent).await?;

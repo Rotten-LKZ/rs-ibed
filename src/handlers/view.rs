@@ -168,7 +168,7 @@ pub async fn view(
     let (processed, mime) = if effective_format == ImageFormat::Original {
         (raw, record.mime_type.clone())
     } else {
-        process_image(&raw, &resolved.preset, image_cfg, &state.workers).await?
+        process_image(&raw, &record.extension, &resolved.preset, image_cfg, &state.workers).await?
     };
 
     if let Some(parent) = cache_path.parent() {
