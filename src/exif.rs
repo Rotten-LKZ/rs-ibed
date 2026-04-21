@@ -108,9 +108,6 @@ fn write_zero(data: &mut [u8], offset: usize, len: usize) {
 /// For JPEG: surgically zeros out unwanted EXIF IFD entries in-place
 /// without re-encoding, so image quality is perfectly preserved.
 ///
-/// For HEIF/HEIC: uses libheif to locate the EXIF TIFF block, then
-/// applies the same surgical IFD entry zeroing as JPEG.
-///
 /// For other formats: returns the data unchanged. The re-encoding
 /// in the processing pipeline strips all metadata from processed variants.
 pub fn strip_metadata(data: &[u8], ext: &str, keep: &[MetadataField]) -> Vec<u8> {
@@ -121,7 +118,6 @@ pub fn strip_metadata(data: &[u8], ext: &str, keep: &[MetadataField]) -> Vec<u8>
 
     match ext {
         "jpg" | "jpeg" => strip_jpeg_metadata(data, keep),
-        "heif" | "heic" => strip_heif_metadata(data, keep),
         _ => data.to_vec(),
     }
 }
@@ -132,16 +128,6 @@ fn strip_jpeg_metadata(data: &[u8], keep: &[MetadataField]) -> Vec<u8> {
     // Find APP1 EXIF segment and process it
     if let Some(app1_range) = find_app1_exif(&buf) {
         let tiff_start = app1_range.start;
-        strip_exif_ifd_entries(&mut buf, tiff_start, keep);
-    }
-
-    buf
-}
-
-fn strip_heif_metadata(data: &[u8], keep: &[MetadataField]) -> Vec<u8> {
-    let mut buf = data.to_vec();
-
-    if let Some(tiff_start) = find_heif_exif_tiff_offset(&buf) {
         strip_exif_ifd_entries(&mut buf, tiff_start, keep);
     }
 
@@ -396,64 +382,3 @@ fn has_all_groups(keep: &[MetadataField]) -> bool {
         .all(|g| keep.contains(g))
 }
 
-/// Extract raw EXIF bytes from a HEIF/HEIC file.
-///
-/// Returns `Some(exif_bytes)` if EXIF metadata is found, or `None` if
-/// the file has no EXIF block. The returned bytes include the EXIF header
-/// (usually starting with `Exif\0\0` followed by the TIFF structure).
-pub fn read_heif_exif(data: &[u8]) -> Option<Vec<u8>> {
-    use libheif_rs::HeifContext;
-
-    let ctx = HeifContext::read_from_bytes(data).ok()?;
-    let handle = ctx.primary_image_handle().ok()?;
-
-    let meta_count = handle.number_of_metadata_blocks(b"Exif");
-    if meta_count == 0 {
-        return None;
-    }
-
-    let mut meta_ids = vec![0u32; meta_count as usize];
-    handle.metadata_block_ids(&mut meta_ids, b"Exif");
-
-    if meta_ids.is_empty() {
-        return None;
-    }
-
-    handle.metadata(meta_ids[0]).ok()
-}
-
-/// Locate the TIFF header offset within raw HEIF bytes.
-///
-/// Uses libheif to read the EXIF metadata block, then searches for those
-/// TIFF bytes in the raw file data so we can modify them in-place.
-fn find_heif_exif_tiff_offset(data: &[u8]) -> Option<usize> {
-    let exif = read_heif_exif(data)?;
-
-    // EXIF block starts with "Exif\0\0" (6 bytes), then TIFF header
-    if exif.len() < 8 {
-        return None;
-    }
-
-    let tiff_header = &exif[6..14]; // byte order(2) + magic(2) + ifd0_offset(4)
-    if tiff_header.len() < 8 {
-        return None;
-    }
-
-    // Validate TIFF header
-    let bo = &tiff_header[..2];
-    if bo != b"II" && bo != b"MM" {
-        return None;
-    }
-
-    // Search for the TIFF header in the raw data
-    data.windows(8)
-        .position(|w| w == tiff_header)
-        .and_then(|offset| {
-            // Verify it looks like a real TIFF structure
-            if offset + 8 <= data.len() {
-                Some(offset)
-            } else {
-                None
-            }
-        })
-}

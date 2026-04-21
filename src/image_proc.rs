@@ -32,59 +32,8 @@ pub fn format_to_mime(format: ImageFormat) -> &'static str {
 }
 
 /// Decode image bytes into a `DynamicImage`.
-///
-/// For HEIF/HEIC files, uses libheif for decoding.
-/// For all other formats, delegates to the `image` crate.
-pub fn decode_image(data: &[u8], ext: &str) -> AppResult<DynamicImage> {
-    if ext == "heif" || ext == "heic" {
-        decode_heif(data)
-    } else {
-        image::load_from_memory(data).map_err(AppError::Image)
-    }
-}
-
-/// Decode a HEIF/HEIC image to `DynamicImage` using libheif.
-fn decode_heif(data: &[u8]) -> AppResult<DynamicImage> {
-    use libheif_rs::{ColorSpace, HeifContext, LibHeif, RgbChroma};
-
-    let ctx = HeifContext::read_from_bytes(data)
-        .map_err(|e| AppError::BadRequest(format!("failed to read HEIF: {e}")))?;
-
-    let handle = ctx
-        .primary_image_handle()
-        .map_err(|e| AppError::BadRequest(format!("failed to get HEIF image handle: {e}")))?;
-
-    let lib_heif = LibHeif::new();
-    let image = lib_heif
-        .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgba), None)
-        .map_err(|e| AppError::BadRequest(format!("failed to decode HEIF: {e}")))?;
-
-    let plane = image
-        .planes()
-        .interleaved
-        .ok_or_else(|| AppError::BadRequest("HEIF image has no interleaved plane".into()))?;
-
-    let width = handle.width();
-    let height = handle.height();
-    let stride = plane.stride;
-    let src = plane.data;
-
-    // If stride matches width*4, use data directly; otherwise copy row by row.
-    let rgba_data = if stride == width as usize * 4 {
-        src.to_vec()
-    } else {
-        let mut buf = Vec::with_capacity(width as usize * height as usize * 4);
-        for row in 0..height as usize {
-            let start = row * stride;
-            let end = start + width as usize * 4;
-            buf.extend_from_slice(&src[start..end]);
-        }
-        buf
-    };
-
-    image::RgbaImage::from_raw(width, height, rgba_data)
-        .map(DynamicImage::ImageRgba8)
-        .ok_or_else(|| AppError::Internal("failed to construct image from HEIF pixels".into()))
+pub fn decode_image(data: &[u8], _ext: &str) -> AppResult<DynamicImage> {
+    image::load_from_memory(data).map_err(AppError::Image)
 }
 
 /// Process image bytes according to a preset and global config.
